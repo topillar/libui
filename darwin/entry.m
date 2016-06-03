@@ -28,7 +28,7 @@ struct uiEntry {
 };
 
 @interface entryDelegateClass : NSObject<NSTextFieldDelegate> {
-	NSMapTable *entries;
+	struct mapTable *entries;
 }
 - (void)controlTextDidChange:(NSNotification *)note;
 - (void)registerEntry:(uiEntry *)e;
@@ -47,9 +47,7 @@ struct uiEntry {
 
 - (void)dealloc
 {
-	if ([self->entries count] != 0)
-		complain("attempt to destroy shared entry delegate but entries are still registered to it");
-	[self->entries release];
+	mapDestroy(self->entries);
 	[super dealloc];
 }
 
@@ -70,19 +68,23 @@ struct uiEntry {
 - (void)unregisterEntry:(uiEntry *)e
 {
 	[e->textfield setDelegate:nil];
-	[self->entries removeObjectForKey:e->textfield];
+	mapDelete(self->entries, e->textfield);
 }
 
 @end
 
 static entryDelegateClass *entryDelegate = nil;
 
-uiDarwinDefineControlWithOnDestroy(
-	uiEntry,								// type name
-	uiEntryType,							// type function
-	textfield,								// handle
-	[entryDelegate unregisterEntry:this];			// on destroy
-)
+uiDarwinControlAllDefaultsExceptDestroy(uiEntry, textfield)
+
+static void uiEntryDestroy(uiControl *c)
+{
+	uiEntry *e = uiEntry(c);
+
+	[entryDelegate unregisterEntry:e];
+	[e->textfield release];
+	uiFreeControl(uiControl(e));
+}
 
 char *uiEntryText(uiEntry *e)
 {
@@ -151,18 +153,16 @@ uiEntry *uiNewEntry(void)
 {
 	uiEntry *e;
 
-	e = (uiEntry *) uiNewControl(uiEntryType());
+	uiDarwinNewControl(uiEntry, e);
 
 	e->textfield = newEditableTextField();
 
 	if (entryDelegate == nil) {
-		entryDelegate = [entryDelegateClass new];
+		entryDelegate = [[entryDelegateClass new] autorelease];
 		[delegates addObject:entryDelegate];
 	}
 	[entryDelegate registerEntry:e];
 	uiEntryOnChanged(e, defaultOnChanged, NULL);
-
-	uiDarwinFinishNewControl(e, uiEntry);
 
 	return e;
 }

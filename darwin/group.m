@@ -5,52 +5,116 @@ struct uiGroup {
 	uiDarwinControl c;
 	NSBox *box;
 	uiControl *child;
+	NSLayoutPriority oldHorzHuggingPri;
+	NSLayoutPriority oldVertHuggingPri;
 	int margined;
+	struct singleChildConstraints constraints;
+	NSLayoutPriority horzHuggingPri;
+	NSLayoutPriority vertHuggingPri;
 };
 
-static void onDestroy(uiGroup *);
-
-uiDarwinDefineControlWithOnDestroy(
-	uiGroup,								// type name
-	uiGroupType,							// type function
-	box,									// handle
-	onDestroy(this);						// on destroy
-)
-
-static void onDestroy(uiGroup *g)
+static void removeConstraints(uiGroup *g)
 {
+	// set to contentView instead of to the box itself, otherwise we get clipping underneath the label
+	singleChildConstraintsRemove(&(g->constraints), [g->box contentView]);
+}
+
+static void uiGroupDestroy(uiControl *c)
+{
+	uiGroup *g = uiGroup(c);
+
+	removeConstraints(g);
 	if (g->child != NULL) {
 		uiControlSetParent(g->child, NULL);
+		uiDarwinControlSetSuperview(uiDarwinControl(g->child), nil);
 		uiControlDestroy(g->child);
 	}
+	[g->box release];
+	uiFreeControl(uiControl(g));
 }
 
-static void groupContainerUpdateState(uiControl *c)
+uiDarwinControlDefaultHandle(uiGroup, box)
+uiDarwinControlDefaultParent(uiGroup, box)
+uiDarwinControlDefaultSetParent(uiGroup, box)
+uiDarwinControlDefaultToplevel(uiGroup, box)
+uiDarwinControlDefaultVisible(uiGroup, box)
+uiDarwinControlDefaultShow(uiGroup, box)
+uiDarwinControlDefaultHide(uiGroup, box)
+uiDarwinControlDefaultEnabled(uiGroup, box)
+uiDarwinControlDefaultEnable(uiGroup, box)
+uiDarwinControlDefaultDisable(uiGroup, box)
+
+static void uiGroupSyncEnableState(uiDarwinControl *c, int enabled)
 {
 	uiGroup *g = uiGroup(c);
 
+	if (uiDarwinShouldStopSyncEnableState(uiDarwinControl(g), enabled))
+		return;
 	if (g->child != NULL)
-		controlUpdateState(g->child);
+		uiDarwinControlSyncEnableState(uiDarwinControl(g->child), enabled);
 }
 
-static void groupRelayout(uiDarwinControl *c)
+uiDarwinControlDefaultSetSuperview(uiGroup, box)
+
+static void groupRelayout(uiGroup *g)
 {
-	uiGroup *g = uiGroup(c);
-	uiDarwinControl *cc;
 	NSView *childView;
 
+	removeConstraints(g);
 	if (g->child == NULL)
 		return;
-	[g->box removeConstraints:[g->box constraints]];
-	cc = uiDarwinControl(g->child);
 	childView = (NSView *) uiControlHandle(g->child);
-	// first relayout the child
-	(*(cc->Relayout))(cc);
-	// now relayout ourselves
-	// see below on using the content view
-	layoutSingleView(g->box, childView, g->margined);
-	// we need to explicitly tell the NSBox to recompute its own size based on the new content layout
-	[g->box sizeToFit];
+	singleChildConstraintsEstablish(&(g->constraints),
+		[g->box contentView], childView,
+		uiDarwinControlHugsTrailingEdge(uiDarwinControl(g->child)),
+		uiDarwinControlHugsBottom(uiDarwinControl(g->child)),
+		g->margined,
+		@"uiGroup");
+	// needed for some very rare drawing errors...
+	jiggleViewLayout(g->box);
+}
+
+// TODO rename these since I'm starting to get confused by what they mean by hugging
+BOOL uiGroupHugsTrailingEdge(uiDarwinControl *c)
+{
+	uiGroup *g = uiGroup(c);
+
+	// TODO make a function?
+	return g->horzHuggingPri < NSLayoutPriorityWindowSizeStayPut;
+}
+
+BOOL uiGroupHugsBottom(uiDarwinControl *c)
+{
+	uiGroup *g = uiGroup(c);
+
+	return g->vertHuggingPri < NSLayoutPriorityWindowSizeStayPut;
+}
+
+static void uiGroupChildEdgeHuggingChanged(uiDarwinControl *c)
+{
+	uiGroup *g = uiGroup(c);
+
+	groupRelayout(g);
+}
+
+static NSLayoutPriority uiGroupHuggingPriority(uiDarwinControl *c, NSLayoutConstraintOrientation orientation)
+{
+	uiGroup *g = uiGroup(c);
+
+	if (orientation == NSLayoutConstraintOrientationHorizontal)
+		return g->horzHuggingPri;
+	return g->vertHuggingPri;
+}
+
+static void uiGroupSetHuggingPriority(uiDarwinControl *c, NSLayoutPriority priority, NSLayoutConstraintOrientation orientation)
+{
+	uiGroup *g = uiGroup(c);
+
+	if (orientation == NSLayoutConstraintOrientationHorizontal)
+		g->horzHuggingPri = priority;
+	else
+		g->vertHuggingPri = priority;
+	uiDarwinNotifyEdgeHuggingChanged(uiDarwinControl(g));
 }
 
 char *uiGroupTitle(uiGroup *g)
@@ -61,8 +125,6 @@ char *uiGroupTitle(uiGroup *g)
 void uiGroupSetTitle(uiGroup *g, const char *title)
 {
 	[g->box setTitle:toNSString(title)];
-	// changing the text might necessitate a change in the groupbox's size
-	uiDarwinControlTriggerRelayout(uiDarwinControl(g));
 }
 
 void uiGroupSetChild(uiGroup *g, uiControl *child)
@@ -70,20 +132,25 @@ void uiGroupSetChild(uiGroup *g, uiControl *child)
 	NSView *childView;
 
 	if (g->child != NULL) {
-		childView = (NSView *) uiControlHandle(g->child);
-		[childView removeFromSuperview];
+		removeConstraints(g);
+		uiDarwinControlSetHuggingPriority(uiDarwinControl(g->child), g->oldHorzHuggingPri, NSLayoutConstraintOrientationHorizontal);
+		uiDarwinControlSetHuggingPriority(uiDarwinControl(g->child), g->oldVertHuggingPri, NSLayoutConstraintOrientationVertical);
 		uiControlSetParent(g->child, NULL);
+		uiDarwinControlSetSuperview(uiDarwinControl(g->child), nil);
 	}
 	g->child = child;
 	if (g->child != NULL) {
 		childView = (NSView *) uiControlHandle(g->child);
 		uiControlSetParent(g->child, uiControl(g));
-		// we have to add controls to the box itself NOT the content view
-		// otherwise, things get really glitchy
-		// we also need to call -sizeToFit, but we'll do that in the relayout that's triggered below (see above)
-		[g->box addSubview:childView];
-		uiDarwinControlTriggerRelayout(uiDarwinControl(g));
+		uiDarwinControlSetSuperview(uiDarwinControl(g->child), [g->box contentView]);
+		uiDarwinControlSyncEnableState(uiDarwinControl(g->child), uiControlEnabledToUser(uiControl(g)));
+		// don't hug, just in case we're a stretchy group
+		g->oldHorzHuggingPri = uiDarwinControlHuggingPriority(uiDarwinControl(g->child), NSLayoutConstraintOrientationHorizontal);
+		g->oldVertHuggingPri = uiDarwinControlHuggingPriority(uiDarwinControl(g->child), NSLayoutConstraintOrientationVertical);
+		uiDarwinControlSetHuggingPriority(uiDarwinControl(g->child), NSLayoutPriorityDefaultLow, NSLayoutConstraintOrientationHorizontal);
+		uiDarwinControlSetHuggingPriority(uiDarwinControl(g->child), NSLayoutPriorityDefaultLow, NSLayoutConstraintOrientationVertical);
 	}
+	groupRelayout(g);
 }
 
 int uiGroupMargined(uiGroup *g)
@@ -94,15 +161,14 @@ int uiGroupMargined(uiGroup *g)
 void uiGroupSetMargined(uiGroup *g, int margined)
 {
 	g->margined = margined;
-	if (g->child != NULL)
-		uiDarwinControlTriggerRelayout(uiDarwinControl(g));
+	singleChildConstraintsSetMargined(&(g->constraints), g->margined);
 }
 
 uiGroup *uiNewGroup(const char *title)
 {
 	uiGroup *g;
 
-	g = (uiGroup *) uiNewControl(uiGroupType());
+	uiDarwinNewControl(uiGroup, g);
 
 	g->box = [[NSBox alloc] initWithFrame:NSZeroRect];
 	[g->box setTitle:toNSString(title)];
@@ -113,9 +179,9 @@ uiGroup *uiNewGroup(const char *title)
 	// we can't use uiDarwinSetControlFont() because the selector is different
 	[g->box setTitleFont:[NSFont systemFontOfSize:[NSFont systemFontSizeForControlSize:NSSmallControlSize]]];
 
-	uiDarwinFinishNewControl(g, uiGroup);
-	uiControl(g)->ContainerUpdateState = groupContainerUpdateState;
-	uiDarwinControl(g)->Relayout = groupRelayout;
+	// default to low hugging to not hug edges
+	g->horzHuggingPri = NSLayoutPriorityDefaultLow;
+	g->vertHuggingPri = NSLayoutPriorityDefaultLow;
 
 	return g;
 }

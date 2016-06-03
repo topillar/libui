@@ -1,11 +1,10 @@
 // 6 april 2015
-#include <stdlib.h>
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-#define uthash_fatal(msg) complain("uthash failed: %s", (msg))
-#define uthash_malloc(sz) uiAlloc((sz), "(uthash internal)")
-#define uthash_free(ptr,sz) uiFree((ptr))
-#include "uthash/uthash.h"
-#include "uthash/utarray.h"
+#include <stdarg.h>
+#include "controlsigs.h"
 
 extern uiInitOptions options;
 
@@ -14,35 +13,23 @@ extern void *uiAlloc(size_t, const char *);
 extern void *uiRealloc(void *, size_t, const char *);
 extern void uiFree(void *);
 
-extern void complain(const char *, ...);
+// ugh, this was only introduced in MSVC 2015...
+#ifdef _MSC_VER
+#define __func__ __FUNCTION__
+#endif
+extern void realbug(const char *file, const char *line, const char *func, const char *prefix, const char *format, va_list ap);
+#define _ns2(s) #s
+#define _ns(s) _ns2(s)
+extern void _implbug(const char *file, const char *line, const char *func, const char *format, ...);
+#define implbug(...) _implbug(__FILE__, _ns(__LINE__), __func__, __VA_ARGS__)
+extern void _userbug(const char *file, const char *line, const char *func, const char *format, ...);
+#define userbug(...) _userbug(__FILE__, _ns(__LINE__), __func__, __VA_ARGS__)
 
-extern int isToplevel(uiControl *);
-extern uiControl *toplevelOwning(uiControl *);
-extern int controlSelfVisible(uiControl *);
-extern void controlUpdateState(uiControl *);
-
-extern void osCommitEnable(uiControl *);
-extern void osCommitDisable(uiControl *);
-
-// ptrarray.c
-struct ptrArray {
-	void **ptrs;
-	uintmax_t len;
-	uintmax_t cap;
-};
-struct ptrArray *newPtrArray(void);
-void ptrArrayDestroy(struct ptrArray *);
-void ptrArrayAppend(struct ptrArray *, void *);
-void ptrArrayInsertAt(struct ptrArray *, uintmax_t, void *);
-void ptrArrayDelete(struct ptrArray *, uintmax_t);
-#define ptrArrayIndex(p, T, i) ((T) ((p)->ptrs[(i)]))
+// control.c
+extern uiControl *newControl(size_t size, uint32_t OSsig, uint32_t typesig, const char *typenamestr);
 
 // shouldquit.c
 extern int shouldQuit(void);
-
-// types.c
-extern void uninitTypes(void);
-extern uiTyped *newTyped(uintmax_t type);
 
 // areaevents.c
 typedef struct clickCounter clickCounter;
@@ -62,11 +49,10 @@ extern void clickCounterReset(clickCounter *);
 extern int fromScancode(uintptr_t, uiAreaKeyEvent *);
 
 // matrix.c
-extern void setIdentity(uiDrawMatrix *);
 extern void fallbackSkew(uiDrawMatrix *, double, double, double, double);
-extern void fallbackTranslate(uiDrawMatrix *, double, double);
 extern void scaleCenter(double, double, double *, double *);
-extern void fallbackScale(uiDrawMatrix *, double, double, double, double);
-extern void fallbackMultiply(uiDrawMatrix *, uiDrawMatrix *);
-extern void fallbackTransformPoint(uiDrawMatrix *, double *, double *);
 extern void fallbackTransformSize(uiDrawMatrix *, double *, double *);
+
+#ifdef __cplusplus
+}
+#endif

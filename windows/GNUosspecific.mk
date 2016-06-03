@@ -2,14 +2,13 @@
 
 EXESUFFIX = .exe
 LIBSUFFIX = .dll
+OSHSUFFIX = .h
+STATICLIBSUFFIX = .lib
+TOOLCHAIN = msvc
 
-# TODO only when cross-compiling?
-ifeq ($(ARCH),amd64)
-	CC = x86_64-w64-mingw32-gcc
-	RC = x86_64-w64-mingw32-windres
-else ifeq ($(ARCH),386)
-	CC = i686-w64-mingw32-gcc
-	RC = i686-w64-mingw32-windres
-else ifneq ($(ARCH),default)
-$(error [FAIL] unknown architecture $(ARCH) for Windows build; I need to know which compiler to invoke)
-endif
+USESSONAME = 0
+
+# notice that usp10.lib comes before gdi32.lib
+# TODO prune this list
+NATIVE_UI_LDFLAGS = \
+	user32.lib kernel32.lib usp10.lib gdi32.lib comctl32.lib uxtheme.lib msimg32.lib comdlg32.lib d2d1.lib dwrite.lib ole32.lib oleaut32.lib oleacc.lib uuid.lib

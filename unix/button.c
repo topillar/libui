@@ -9,10 +9,7 @@ struct uiButton {
 	void *onClickedData;
 };
 
-uiUnixDefineControl(
-	uiButton,								// type name
-	uiButtonType							// type function
-)
+uiUnixControlAllDefaults(uiButton)
 
 static void onClicked(GtkButton *button, gpointer data)
 {
@@ -34,8 +31,6 @@ char *uiButtonText(uiButton *b)
 void uiButtonSetText(uiButton *b, const char *text)
 {
 	gtk_button_set_label(b->button, text);
-	// changing the text might necessitate a change in the button's size
-	uiControlQueueResize(uiControl(b));
 }
 
 void uiButtonOnClicked(uiButton *b, void (*f)(uiButton *, void *), void *data)
@@ -48,15 +43,13 @@ uiButton *uiNewButton(const char *text)
 {
 	uiButton *b;
 
-	b = (uiButton *) uiNewControl(uiButtonType());
+	uiUnixNewControl(uiButton, b);
 
 	b->widget = gtk_button_new_with_label(text);
 	b->button = GTK_BUTTON(b->widget);
 
 	g_signal_connect(b->widget, "clicked", G_CALLBACK(onClicked), b);
 	uiButtonOnClicked(b, defaultOnClicked, NULL);
-
-	uiUnixFinishNewControl(b, uiButton);
 
 	return b;
 }

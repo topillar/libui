@@ -21,7 +21,6 @@ const char *uiInit(uiInitOptions *o)
 void uiUninit(void)
 {
 	uninitMenus();
-	uninitTypes();
 	uninitAlloc();
 }
 
@@ -33,6 +32,16 @@ void uiFreeInitError(const char *err)
 void uiMain(void)
 {
 	gtk_main();
+}
+
+int uiMainStep(int wait)
+{
+	gboolean block;
+
+	block = FALSE;
+	if (wait)
+		block = TRUE;
+	return gtk_main_iteration_do(block) == FALSE;
 }
 
 // gtk_main_quit() may run immediately, or it may wait for other pending events; "it depends" (thanks mclasen in irc.gimp.net/#gtk+)
@@ -47,4 +56,28 @@ static gboolean quit(gpointer data)
 void uiQuit(void)
 {
 	gdk_threads_add_idle(quit, NULL);
+}
+
+struct queued {
+	void (*f)(void *);
+	void *data;
+};
+
+static gboolean doqueued(gpointer data)
+{
+	struct queued *q = (struct queued *) data;
+
+	(*(q->f))(q->data);
+	uiFree(q);
+	return FALSE;
+}
+
+void uiQueueMain(void (*f)(void *data), void *data)
+{
+	struct queued *q;
+
+	q = uiNew(struct queued);
+	q->f = f;
+	q->data = data;
+	gdk_threads_add_idle(doqueued, q);
 }

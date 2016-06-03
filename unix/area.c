@@ -1,6 +1,8 @@
 // 4 september 2015
 #include "uipriv_unix.h"
 
+// notes:
+// - G_DECLARE_DERIVABLE/FINAL_INTERFACE() requires glib 2.44 and that's starting with debian stretch (testing) (GTK+ 3.18) and ubuntu 15.04 (GTK+ 3.14) - debian jessie has 2.42 (GTK+ 3.14)
 #define areaWidgetType (areaWidget_get_type())
 #define areaWidget(obj) (G_TYPE_CHECK_INSTANCE_CAST((obj), areaWidgetType, areaWidget))
 #define isAreaWidget(obj) (G_TYPE_CHECK_INSTANCE_TYPE((obj), areaWidgetType))
@@ -13,7 +15,11 @@ typedef struct areaWidgetClass areaWidgetClass;
 
 struct areaWidget {
 	GtkDrawingArea parent_instance;
-	struct areaPrivate *priv;
+	uiArea *a;
+	// construct-only parameters aare not set until after the init() function has returned
+	// we need this particular object available during init(), so put it here instead of in uiArea
+	// keep a pointer in uiArea for convenience, though
+	clickCounter cc;
 };
 
 struct areaWidgetClass {
@@ -22,111 +28,48 @@ struct areaWidgetClass {
 
 struct uiArea {
 	uiUnixControl c;
-	GtkWidget *widget;
+	GtkWidget *widget;		// either swidget or areaWidget depending on whether it is scrolling
+
+	GtkWidget *swidget;
 	GtkContainer *scontainer;
 	GtkScrolledWindow *sw;
+
 	GtkWidget *areaWidget;
 	GtkDrawingArea *drawingArea;
 	areaWidget *area;
-};
 
-struct areaPrivate {
-	uiArea *a;
 	uiAreaHandler *ah;
 
-	GtkAdjustment *ha;
-	GtkAdjustment *va;
-	// TODO get rid of the need for these
-	int clientWidth;
-	int clientHeight;
-	// needed for GtkScrollable
-	GtkScrollablePolicy hpolicy, vpolicy;
-	clickCounter cc;
+	gboolean scrolling;
+	intmax_t scrollWidth;
+	intmax_t scrollHeight;
+
+	// note that this is a pointer; see above
+	clickCounter *cc;
 };
 
-static void areaWidget_scrollable_init(GtkScrollable *);
+G_DEFINE_TYPE(areaWidget, areaWidget, GTK_TYPE_DRAWING_AREA)
 
-G_DEFINE_TYPE_WITH_CODE(areaWidget, areaWidget, GTK_TYPE_DRAWING_AREA,
-	G_IMPLEMENT_INTERFACE(GTK_TYPE_SCROLLABLE, areaWidget_scrollable_init))
-
-/*
-lower and upper are the bounds of the adjusment, in units
-step_increment is the number of units scrolled when using the arrow keys or the buttons on an old-style scrollbar
-page_incremenet is the number of page_size units scrolled with the Page Up/Down keys
-according to baedert, the other condition is that upper >= page_size, and the effect is that the largest possible value is upper - page_size
-
-unfortunately, everything in GTK+ assumes 1 unit = 1 pixel
-let's do the same :/
-*/
-static void updateScroll(areaWidget *a)
+static void areaWidget_init(areaWidget *aw)
 {
-	struct areaPrivate *ap = a->priv;
-	uintmax_t count;
-
-	// don't call if too early
-	if (ap->ha == NULL || ap->va == NULL)
-		return;
-
-	count = (*(ap->ah->HScrollMax))(ap->ah, ap->a);
-	gtk_adjustment_configure(ap->ha,
-		gtk_adjustment_get_value(ap->ha),
-		0,
-		count,
-		1,
-		ap->clientWidth,
-		MIN(count, ap->clientWidth));
-
-	count = (*(ap->ah->VScrollMax))(ap->ah, ap->a);
-	gtk_adjustment_configure(ap->va,
-		gtk_adjustment_get_value(ap->va),
-		0,
-		count,
-		1,
-		ap->clientHeight,
-		MIN(count, ap->clientHeight));
-
-	// TODO notify adjustment changes?
-//	g_object_notify(G_OBJECT(a), "hadjustment");
-//	g_object_notify(G_OBJECT(a), "vadjustment");
-}
-
-static void areaWidget_init(areaWidget *a)
-{
-	a->priv = G_TYPE_INSTANCE_GET_PRIVATE(a, areaWidgetType, struct areaPrivate);
-
 	// for events
-	gtk_widget_add_events(GTK_WIDGET(a),
+	gtk_widget_add_events(GTK_WIDGET(aw),
 		GDK_POINTER_MOTION_MASK |
 		GDK_BUTTON_MOTION_MASK |
 		GDK_BUTTON_PRESS_MASK |
 		GDK_BUTTON_RELEASE_MASK |
 		GDK_KEY_PRESS_MASK |
-		GDK_KEY_RELEASE_MASK);
+		GDK_KEY_RELEASE_MASK |
+		GDK_ENTER_NOTIFY_MASK |
+		GDK_LEAVE_NOTIFY_MASK);
 
-	// for scrolling
-	// TODO do we need GDK_TOUCH_MASK?
-	gtk_widget_add_events(GTK_WIDGET(a),
-		GDK_SCROLL_MASK |
-		GDK_TOUCH_MASK |
-		GDK_SMOOTH_SCROLL_MASK);
+	gtk_widget_set_can_focus(GTK_WIDGET(aw), TRUE);
 
-	gtk_widget_set_can_focus(GTK_WIDGET(a), TRUE);
-
-	clickCounterReset(&(a->priv->cc));
+	clickCounterReset(&(aw->cc));
 }
 
 static void areaWidget_dispose(GObject *obj)
 {
-	struct areaPrivate *ap = areaWidget(obj)->priv;
-
-	if (ap->ha != NULL) {
-		g_object_unref(ap->ha);
-		ap->ha = NULL;
-	}
-	if (ap->va != NULL) {
-		g_object_unref(ap->va);
-		ap->va = NULL;
-	}
 	G_OBJECT_CLASS(areaWidget_parent_class)->dispose(obj);
 }
 
@@ -137,32 +80,45 @@ static void areaWidget_finalize(GObject *obj)
 
 static void areaWidget_size_allocate(GtkWidget *w, GtkAllocation *allocation)
 {
-	struct areaPrivate *ap = areaWidget(w)->priv;
+	areaWidget *aw = areaWidget(w);
+	uiArea *a = aw->a;
 
 	// GtkDrawingArea has a size_allocate() implementation; we need to call it
 	// this will call gtk_widget_set_allocation() for us
 	GTK_WIDGET_CLASS(areaWidget_parent_class)->size_allocate(w, allocation);
-	ap->clientWidth = allocation->width;
-	ap->clientHeight = allocation->height;
-	updateScroll(areaWidget(w));
-	if ((*(ap->ah->RedrawOnResize))(ap->ah, ap->a))
+
+	if (!a->scrolling)
+		// we must redraw everything on resize because Windows requires it
 		gtk_widget_queue_resize(w);
+}
+
+static void loadAreaSize(uiArea *a, double *width, double *height)
+{
+	GtkAllocation allocation;
+
+	*width = 0;
+	*height = 0;
+	// don't provide size information for scrolling areas
+	if (!a->scrolling) {
+		gtk_widget_get_allocation(a->areaWidget, &allocation);
+		// these are already in drawing space coordinates
+		// for drawing, the size of drawing space has the same value as the widget allocation
+		// thanks to tristan in irc.gimp.net/#gtk+
+		*width = allocation.width;
+		*height = allocation.height;
+	}
 }
 
 static gboolean areaWidget_draw(GtkWidget *w, cairo_t *cr)
 {
-	areaWidget *a = areaWidget(w);
-	struct areaPrivate *ap = a->priv;
+	areaWidget *aw = areaWidget(w);
+	uiArea *a = aw->a;
 	uiAreaDrawParams dp;
 	double clipX0, clipY0, clipX1, clipY1;
 
 	dp.Context = newContext(cr);
 
-	// these are already in drawing space coordinates
-	// the size of drawing space has the same value as the widget allocation
-	// thanks to tristan in irc.gimp.net/#gtk+
-	dp.ClientWidth = ap->clientWidth;
-	dp.ClientHeight = ap->clientHeight;
+	loadAreaSize(a, &(dp.AreaWidth), &(dp.AreaHeight));
 
 	cairo_clip_extents(cr, &clipX0, &clipY0, &clipX1, &clipY1);
 	dp.ClipX = clipX0;
@@ -170,19 +126,43 @@ static gboolean areaWidget_draw(GtkWidget *w, cairo_t *cr)
 	dp.ClipWidth = clipX1 - clipX0;
 	dp.ClipHeight = clipY1 - clipY0;
 
-	dp.HScrollPos = gtk_adjustment_get_value(ap->ha);
-	dp.VScrollPos = gtk_adjustment_get_value(ap->va);
-
 	// no need to save or restore the graphics state to reset transformations; GTK+ does that for us
-	(*(ap->ah->Draw))(ap->ah, ap->a, &dp);
+	(*(a->ah->Draw))(a->ah, a, &dp);
 
 	freeContext(dp.Context);
 	return FALSE;
 }
 
-// TODO preferred height/width
+// to do this properly for scrolling areas, we need to
+// - return the same value for min and nat
+// - call gtk_widget_queue_resize() when the size changes
+// thanks to Company in irc.gimp.net/#gtk+
+static void areaWidget_get_preferred_height(GtkWidget *w, gint *min, gint *nat)
+{
+	areaWidget *aw = areaWidget(w);
+	uiArea *a = aw->a;
 
-// TODO merge with toModifiers?
+	// always chain up just in case
+	GTK_WIDGET_CLASS(areaWidget_parent_class)->get_preferred_height(w, min, nat);
+	if (a->scrolling) {
+		*min = a->scrollHeight;
+		*nat = a->scrollHeight;
+	}
+}
+
+static void areaWidget_get_preferred_width(GtkWidget *w, gint *min, gint *nat)
+{
+	areaWidget *aw = areaWidget(w);
+	uiArea *a = aw->a;
+
+	// always chain up just in case
+	GTK_WIDGET_CLASS(areaWidget_parent_class)->get_preferred_width(w, min, nat);
+	if (a->scrolling) {
+		*min = a->scrollWidth;
+		*nat = a->scrollWidth;
+	}
+}
+
 static guint translateModifiers(guint state, GdkWindow *window)
 {
 	GdkModifierType statetype;
@@ -214,7 +194,7 @@ static uiModifiers toModifiers(guint state)
 }
 
 // capture on drag is done automatically on GTK+
-static void finishMouseEvent(struct areaPrivate *ap, uiAreaMouseEvent *me, guint mb, gdouble x, gdouble y, guint state, GdkWindow *window)
+static void finishMouseEvent(uiArea *a, uiAreaMouseEvent *me, guint mb, gdouble x, gdouble y, guint state, GdkWindow *window)
 {
 	// on GTK+, mouse buttons 4-7 are for scrolling; if we got here, that's a mistake
 	if (mb >= 4 && mb <= 7)
@@ -245,17 +225,15 @@ static void finishMouseEvent(struct areaPrivate *ap, uiAreaMouseEvent *me, guint
 	me->X = x;
 	me->Y = y;
 
-	me->ClientWidth = ap->clientWidth;
-	me->ClientHeight = ap->clientHeight;
-	me->HScrollPos = gtk_adjustment_get_value(ap->ha);
-	me->VScrollPos = gtk_adjustment_get_value(ap->va);
+	loadAreaSize(a, &(me->AreaWidth), &(me->AreaHeight));
 
-	(*(ap->ah->MouseEvent))(ap->ah, ap->a, me);
+	(*(a->ah->MouseEvent))(a->ah, a, me);
 }
 
 static gboolean areaWidget_button_press_event(GtkWidget *w, GdkEventButton *e)
 {
-	struct areaPrivate *ap = areaWidget(w)->priv;
+	areaWidget *aw = areaWidget(w);
+	uiArea *a = aw->a;
 	gint maxTime, maxDistance;
 	GtkSettings *settings;
 	uiAreaMouseEvent me;
@@ -272,51 +250,63 @@ static gboolean areaWidget_button_press_event(GtkWidget *w, GdkEventButton *e)
 		"gtk-double-click-time", &maxTime,
 		"gtk-double-click-distance", &maxDistance,
 		NULL);
-	// TODO unref settings?
-	me.Count = clickCounterClick(&(ap->cc), me.Down,
+	// don't unref settings; it's transfer-none (thanks gregier in irc.gimp.net/#gtk+)
+	me.Count = clickCounterClick(a->cc, me.Down,
 		e->x, e->y,
 		e->time, maxTime,
 		maxDistance, maxDistance);
 
 	me.Down = e->button;
 	me.Up = 0;
-	finishMouseEvent(ap, &me, e->button, e->x, e->y, e->state, e->window);
+	finishMouseEvent(a, &me, e->button, e->x, e->y, e->state, e->window);
 	return GDK_EVENT_PROPAGATE;
 }
 
 static gboolean areaWidget_button_release_event(GtkWidget *w, GdkEventButton *e)
 {
-	struct areaPrivate *ap = areaWidget(w)->priv;
+	areaWidget *aw = areaWidget(w);
+	uiArea *a = aw->a;
 	uiAreaMouseEvent me;
 
 	me.Down = 0;
 	me.Up = e->button;
 	me.Count = 0;
-	finishMouseEvent(ap, &me, e->button, e->x, e->y, e->state, e->window);
+	finishMouseEvent(a, &me, e->button, e->x, e->y, e->state, e->window);
 	return GDK_EVENT_PROPAGATE;
 }
 
 static gboolean areaWidget_motion_notify_event(GtkWidget *w, GdkEventMotion *e)
 {
-	struct areaPrivate *ap = areaWidget(w)->priv;
+	areaWidget *aw = areaWidget(w);
+	uiArea *a = aw->a;
 	uiAreaMouseEvent me;
 
 	me.Down = 0;
 	me.Up = 0;
 	me.Count = 0;
-	finishMouseEvent(ap, &me, 0, e->x, e->y, e->state, e->window);
+	finishMouseEvent(a, &me, 0, e->x, e->y, e->state, e->window);
 	return GDK_EVENT_PROPAGATE;
 }
 
 // we want switching away from the control to reset the double-click counter, like with WM_ACTIVATE on Windows
-// according to tristan in irc.gimp.net/#gtk+, doing this on enter-notify-event and leave-notify-event is correct (and it seems to be true in my own tests; plus the events DO get sent when switching programs with the keyboard (just pointing that out))
-// differentiating between enter-notify-event and leave-notify-event is unimportant
-gboolean areaWidget_enterleave_notify_event(GtkWidget *w, GdkEventCrossing *e)
+// according to tristan in irc.gimp.net/#gtk+, doing this on both enter-notify-event and leave-notify-event is correct (and it seems to be true in my own tests; plus the events DO get sent when switching programs with the keyboard (just pointing that out))
+static gboolean onCrossing(areaWidget *aw, int left)
 {
-	struct areaPrivate *ap = areaWidget(w)->priv;
+	uiArea *a = aw->a;
 
-	clickCounterReset(&(ap->cc));
+	(*(a->ah->MouseCrossed))(a->ah, a, left);
+	clickCounterReset(a->cc);
 	return GDK_EVENT_PROPAGATE;
+}
+
+static gboolean areaWidget_enter_notify_event(GtkWidget *w, GdkEventCrossing *e)
+{
+	return onCrossing(areaWidget(w), 0);
+}
+
+static gboolean areaWidget_leave_notify_event(GtkWidget *w, GdkEventCrossing *e)
+{
+	return onCrossing(areaWidget(w), 1);
 }
 
 // note: there is no equivalent to WM_CAPTURECHANGED on GTK+; there literally is no way to break a grab like that (at least not on X11 and Wayland)
@@ -378,7 +368,7 @@ static const struct {
 	{ GDK_KEY_Print, 0 },
 };
 
-static int areaKeyEvent(struct areaPrivate *ap, int up, GdkEventKey *e)
+static int areaKeyEvent(uiArea *a, int up, GdkEventKey *e)
 {
 	uiAreaKeyEvent ke;
 	guint state;
@@ -414,81 +404,44 @@ static int areaKeyEvent(struct areaPrivate *ap, int up, GdkEventKey *e)
 	return 0;
 
 keyFound:
-	return (*(ap->ah->KeyEvent))(ap->ah, ap->a, &ke);
+	return (*(a->ah->KeyEvent))(a->ah, a, &ke);
 }
 
 static gboolean areaWidget_key_press_event(GtkWidget *w, GdkEventKey *e)
 {
-	struct areaPrivate *ap = areaWidget(w)->priv;
+	areaWidget *aw = areaWidget(w);
+	uiArea *a = aw->a;
 
-	if (areaKeyEvent(ap, 0, e))
+	if (areaKeyEvent(a, 0, e))
 		return GDK_EVENT_STOP;
 	return GDK_EVENT_PROPAGATE;
 }
 
 static gboolean areaWidget_key_release_event(GtkWidget *w, GdkEventKey *e)
 {
-	struct areaPrivate *ap = areaWidget(w)->priv;
+	areaWidget *aw = areaWidget(w);
+	uiArea *a = aw->a;
 
-	if (areaKeyEvent(ap, 1, e))
+	if (areaKeyEvent(a, 1, e))
 		return GDK_EVENT_STOP;
 	return GDK_EVENT_PROPAGATE;
 }
 
 enum {
-	// normal properties must come before override properties
-	// thanks gregier in irc.gimp.net/#gtk+
-	pAreaHandler = 1,
-	pHAdjustment,
-	pVAdjustment,
-	pHScrollPolicy,
-	pVScrollPolicy,
+	pArea = 1,
 	nProps,
 };
 
-static GParamSpec *pspecAreaHandler;
-
-static void onValueChanged(GtkAdjustment *a, gpointer data)
-{
-	// there's no way to scroll the contents of a widget, so we have to redraw the entire thing
-	gtk_widget_queue_draw(GTK_WIDGET(data));
-}
-
-static void replaceAdjustment(areaWidget *a, GtkAdjustment **adj, const GValue *value)
-{
-	if (*adj != NULL) {
-		g_signal_handlers_disconnect_by_func(*adj, G_CALLBACK(onValueChanged), a);
-		g_object_unref(*adj);
-	}
-	*adj = GTK_ADJUSTMENT(g_value_get_object(value));
-	if (*adj != NULL)
-		g_object_ref_sink(*adj);
-	else
-		*adj = gtk_adjustment_new(0, 0, 0, 0, 0, 0);
-	g_signal_connect(*adj, "value-changed", G_CALLBACK(onValueChanged), a);
-	updateScroll(a);
-}
+static GParamSpec *pspecArea;
 
 static void areaWidget_set_property(GObject *obj, guint prop, const GValue *value, GParamSpec *pspec)
 {
-	areaWidget *a = areaWidget(obj);
-	struct areaPrivate *ap = a->priv;
+	areaWidget *aw = areaWidget(obj);
 
 	switch (prop) {
-	case pHAdjustment:
-		replaceAdjustment(a, &(ap->ha), value);
-		return;
-	case pVAdjustment:
-		replaceAdjustment(a, &(ap->va), value);
-		return;
-	case pHScrollPolicy:
-		ap->hpolicy = g_value_get_enum(value);
-		return;
-	case pVScrollPolicy:
-		ap->vpolicy = g_value_get_enum(value);
-		return;
-	case pAreaHandler:
-		ap->ah = (uiAreaHandler *) g_value_get_pointer(value);
+	case pArea:
+		aw->a = (uiArea *) g_value_get_pointer(value);
+		aw->a->cc = &(aw->cc);
 		return;
 	}
 	G_OBJECT_WARN_INVALID_PROPERTY_ID(obj, prop, pspec);
@@ -496,23 +449,6 @@ static void areaWidget_set_property(GObject *obj, guint prop, const GValue *valu
 
 static void areaWidget_get_property(GObject *obj, guint prop, GValue *value, GParamSpec *pspec)
 {
-	areaWidget *a = areaWidget(obj);
-	struct areaPrivate *ap = a->priv;
-
-	switch (prop) {
-	case pHAdjustment:
-		g_value_set_object(value, ap->ha);
-		return;
-	case pVAdjustment:
-		g_value_set_object(value, ap->va);
-		return;
-	case pHScrollPolicy:
-		g_value_set_enum(value, ap->hpolicy);
-		return;
-	case pVScrollPolicy:
-		g_value_set_enum(value, ap->vpolicy);
-		return;
-	}
 	G_OBJECT_WARN_INVALID_PROPERTY_ID(obj, prop, pspec);
 }
 
@@ -525,46 +461,34 @@ static void areaWidget_class_init(areaWidgetClass *class)
 
 	GTK_WIDGET_CLASS(class)->size_allocate = areaWidget_size_allocate;
 	GTK_WIDGET_CLASS(class)->draw = areaWidget_draw;
-//	GTK_WIDGET_CLASS(class)->get_preferred_height = areaWidget_get_preferred_height;
-//	GTK_WIDGET_CLASS(class)->get_preferred_width = areaWidget_get_preferred_width;
+	GTK_WIDGET_CLASS(class)->get_preferred_height = areaWidget_get_preferred_height;
+	GTK_WIDGET_CLASS(class)->get_preferred_width = areaWidget_get_preferred_width;
 	GTK_WIDGET_CLASS(class)->button_press_event = areaWidget_button_press_event;
 	GTK_WIDGET_CLASS(class)->button_release_event = areaWidget_button_release_event;
 	GTK_WIDGET_CLASS(class)->motion_notify_event = areaWidget_motion_notify_event;
-	GTK_WIDGET_CLASS(class)->enter_notify_event = areaWidget_enterleave_notify_event;
-	GTK_WIDGET_CLASS(class)->leave_notify_event = areaWidget_enterleave_notify_event;
+	GTK_WIDGET_CLASS(class)->enter_notify_event = areaWidget_enter_notify_event;
+	GTK_WIDGET_CLASS(class)->leave_notify_event = areaWidget_leave_notify_event;
 	GTK_WIDGET_CLASS(class)->key_press_event = areaWidget_key_press_event;
 	GTK_WIDGET_CLASS(class)->key_release_event = areaWidget_key_release_event;
 
-	g_type_class_add_private(G_OBJECT_CLASS(class), sizeof (struct areaPrivate));
-
-	pspecAreaHandler = g_param_spec_pointer("area-handler",
-		"area-handler",
-		"Area handler.",
+	pspecArea = g_param_spec_pointer("libui-area",
+		"libui-area",
+		"uiArea.",
 		G_PARAM_WRITABLE | G_PARAM_CONSTRUCT_ONLY | G_PARAM_STATIC_STRINGS);
-	g_object_class_install_property(G_OBJECT_CLASS(class), pAreaHandler, pspecAreaHandler);
-
-	// this is the actual interface implementation
-	g_object_class_override_property(G_OBJECT_CLASS(class), pHAdjustment, "hadjustment");
-	g_object_class_override_property(G_OBJECT_CLASS(class), pVAdjustment, "vadjustment");
-	g_object_class_override_property(G_OBJECT_CLASS(class), pHScrollPolicy, "hscroll-policy");
-	g_object_class_override_property(G_OBJECT_CLASS(class), pVScrollPolicy, "vscroll-policy");
-}
-
-static void areaWidget_scrollable_init(GtkScrollable *iface)
-{
-	// no need to do anything; the interface only has properties
+	g_object_class_install_property(G_OBJECT_CLASS(class), pArea, pspecArea);
 }
 
 // control implementation
 
-uiUnixDefineControl(
-	uiArea,								// type name
-	uiAreaType							// type function
-)
+uiUnixControlAllDefaults(uiArea)
 
-void uiAreaUpdateScroll(uiArea *a)
+void uiAreaSetSize(uiArea *a, intmax_t width, intmax_t height)
 {
-	updateScroll(a->area);
+	if (!a->scrolling)
+		userbug("You cannot call uiAreaSetSize() on a non-scrolling uiArea. (area: %p)", a);
+	a->scrollWidth = width;
+	a->scrollHeight = height;
+	gtk_widget_queue_resize(a->areaWidget);
 }
 
 void uiAreaQueueRedrawAll(uiArea *a)
@@ -572,27 +496,58 @@ void uiAreaQueueRedrawAll(uiArea *a)
 	gtk_widget_queue_draw(a->areaWidget);
 }
 
+void uiAreaScrollTo(uiArea *a, double x, double y, double width, double height)
+{
+	// TODO
+	// TODO adjust adjustments and find source for that
+}
+
 uiArea *uiNewArea(uiAreaHandler *ah)
 {
 	uiArea *a;
 
-	a = (uiArea *) uiNewControl(uiAreaType());
+	uiUnixNewControl(uiArea, a);
 
-	a->widget = gtk_scrolled_window_new(NULL, NULL);
-	a->scontainer = GTK_CONTAINER(a->widget);
-	a->sw = GTK_SCROLLED_WINDOW(a->widget);
+	a->ah = ah;
+	a->scrolling = FALSE;
 
 	a->areaWidget = GTK_WIDGET(g_object_new(areaWidgetType,
-		"area-handler", ah,
+		"libui-area", a,
 		NULL));
 	a->drawingArea = GTK_DRAWING_AREA(a->areaWidget);
 	a->area = areaWidget(a->areaWidget);
 
+	a->widget = a->areaWidget;
+
+	return a;
+}
+
+uiArea *uiNewScrollingArea(uiAreaHandler *ah, intmax_t width, intmax_t height)
+{
+	uiArea *a;
+
+	uiUnixNewControl(uiArea, a);
+
+	a->ah = ah;
+	a->scrolling = TRUE;
+	a->scrollWidth = width;
+	a->scrollHeight = height;
+
+	a->swidget = gtk_scrolled_window_new(NULL, NULL);
+	a->scontainer = GTK_CONTAINER(a->swidget);
+	a->sw = GTK_SCROLLED_WINDOW(a->swidget);
+
+	a->areaWidget = GTK_WIDGET(g_object_new(areaWidgetType,
+		"libui-area", a,
+		NULL));
+	a->drawingArea = GTK_DRAWING_AREA(a->areaWidget);
+	a->area = areaWidget(a->areaWidget);
+
+	a->widget = a->swidget;
+
 	gtk_container_add(a->scontainer, a->areaWidget);
 	// and make the area visible; only the scrolled window's visibility is controlled by libui
 	gtk_widget_show(a->areaWidget);
-
-	uiUnixFinishNewControl(a, uiArea);
 
 	return a;
 }

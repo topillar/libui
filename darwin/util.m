@@ -1,6 +1,7 @@
 // 7 april 2015
 #import "uipriv_darwin.h"
 
+// LONGTERM do we really want to do this? make it an option?
 void disableAutocorrect(NSTextView *tv)
 {
 	[tv setEnabledTextCheckingTypes:0];
@@ -11,16 +12,4 @@ void disableAutocorrect(NSTextView *tv)
 	[tv setAutomaticQuoteSubstitutionEnabled:NO];
 	[tv setAutomaticLinkDetectionEnabled:NO];
 	[tv setSmartInsertDeleteEnabled:NO];
-}
-
-void complain(const char *fmt, ...)
-{
-	va_list ap;
-
-	va_start(ap, fmt);
-	fprintf(stderr, "[libui] ");
-	vfprintf(stderr, fmt, ap);
-	fprintf(stderr, "\n");
-	va_end(ap);
-	abort();
 }

@@ -11,10 +11,7 @@ struct uiSpinbox {
 	gulong onChangedSignal;
 };
 
-uiUnixDefineControl(
-	uiSpinbox,							// type name
-	uiSpinboxType							// type function
-)
+uiUnixControlAllDefaults(uiSpinbox)
 
 static void onChanged(GtkSpinButton *sb, gpointer data)
 {
@@ -37,7 +34,7 @@ void uiSpinboxSetValue(uiSpinbox *s, intmax_t value)
 {
 	// we need to inhibit sending of ::value-changed because this WILL send a ::value-changed otherwise
 	g_signal_handler_block(s->spinButton, s->onChangedSignal);
-	// TODO does this clamp?
+	// this clamps for us
 	gtk_spin_button_set_value(s->spinButton, (gdouble) value);
 	g_signal_handler_unblock(s->spinButton, s->onChangedSignal);
 }
@@ -51,23 +48,25 @@ void uiSpinboxOnChanged(uiSpinbox *s, void (*f)(uiSpinbox *, void *), void *data
 uiSpinbox *uiNewSpinbox(intmax_t min, intmax_t max)
 {
 	uiSpinbox *s;
+	intmax_t temp;
 
-	if (min >= max)
-		complain("error: min >= max in uiNewSpinbox()");
+	if (min >= max) {
+		temp = min;
+		min = max;
+		max = temp;
+	}
 
-	s = (uiSpinbox *) uiNewControl(uiSpinboxType());
+	uiUnixNewControl(uiSpinbox, s);
 
 	s->widget = gtk_spin_button_new_with_range(min, max, 1);
 	s->entry = GTK_ENTRY(s->widget);
 	s->spinButton = GTK_SPIN_BUTTON(s->widget);
 
-	// TODO needed?
+	// ensure integers, just to be safe
 	gtk_spin_button_set_digits(s->spinButton, 0);
 
 	s->onChangedSignal = g_signal_connect(s->spinButton, "value-changed", G_CALLBACK(onChanged), s);
 	uiSpinboxOnChanged(s, defaultOnChanged, NULL);
-
-	uiUnixFinishNewControl(s, uiSpinbox);
 
 	return s;
 }

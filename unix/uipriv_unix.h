@@ -1,12 +1,13 @@
 // 22 april 2015
-#define GLIB_VERSION_MIN_REQUIRED GLIB_VERSION_2_32
-#define GLIB_VERSION_MAX_ALLOWED GLIB_VERSION_2_32
-#define GDK_VERSION_MIN_REQUIRED GDK_VERSION_3_4
-#define GDK_VERSION_MAX_ALLOWED GDK_VERSION_3_4
-// TODO make this unnecessary
-#define _GNU_SOURCE
-#include <math.h>
+#define GLIB_VERSION_MIN_REQUIRED GLIB_VERSION_2_40
+#define GLIB_VERSION_MAX_ALLOWED GLIB_VERSION_2_40
+#define GDK_VERSION_MIN_REQUIRED GDK_VERSION_3_10
+#define GDK_VERSION_MAX_ALLOWED GDK_VERSION_3_10
 #include <gtk/gtk.h>
+#include <math.h>
+#include <dlfcn.h>		// see drawtext.c
+#include <langinfo.h>
+#include <string.h>
 #include "../ui.h"
 #include "../ui_unix.h"
 #include "../common/uipriv.h"
@@ -34,7 +35,6 @@ extern struct child *newChildWithBox(uiControl *child, uiControl *parent, GtkCon
 extern void childRemove(struct child *c);
 extern void childDestroy(struct child *c);
 extern GtkWidget *childWidget(struct child *c);
-extern void childUpdateState(struct child *c);
 extern int childFlag(struct child *c);
 extern void childSetFlag(struct child *c, int flag);
 extern GtkWidget *childBox(struct child *c);
@@ -44,5 +44,9 @@ extern void childSetMargined(struct child *c, int margined);
 extern uiDrawContext *newContext(cairo_t *);
 extern void freeContext(uiDrawContext *);
 
-// TODO
-#define uiControlQueueResize(...)
+// drawtext.c
+extern uiDrawTextFont *mkTextFont(PangoFont *f, gboolean add);
+extern PangoFont *pangoDescToPangoFont(PangoFontDescription *pdesc);
+
+// graphemes.c
+extern ptrdiff_t *graphemes(const char *text, PangoContext *context);

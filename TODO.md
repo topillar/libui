@@ -1,3 +1,32 @@
+- windows: should the initial hwndInsertAfter be HWND_BOTTOM for what we want?
+
+- windows: document the rules for controls and containers
+
+- windows: document the minimum size change propagation system
+
+- provisions for controls that cannot be grown? especiailly for windows
+
+- LC_VERSION_MIN_MACOSX has the 10.11 SDK; see if we can knock it down to 10.8 too; OS version is fine
+	- apply the OS version stuff to the test program and examples too
+	- what about micro versions (10.8.x)? force 10.8.0?
+
+- go through ALL the objective-c objects we create and make sure we are using the proper ownership (alloc/init and new are owned by us, all class method constructors are autoreleased - thanks mikeash)
+
+- on OS X, edit shortcuts like command-C working require that the menu entries be defined, or so it seems, even for NSAlert
+	- other platforms?
+
+- make sure all OS X event handlers that use target-action set the action to NULL when the target is unset
+
+- provide a way to get the currently selected uiTab page? set?
+
+- make it so that the windows cntrols only register a resize if their new minimum size is larger than their current size to easen the effect of flicker
+	- it won't remove that outright, but it'll help
+
+- add an option to the test program to run page7b as an independent test in its own window
+	- same for page7c
+
+- http://blogs.msdn.com/b/oldnewthing/archive/2004/01/12/57833.aspx provide a DEF file on Windows
+
 - all ports: update state when adding a control to a parent
 - should uiWindowsSizing be computed against the window handle, not the parent?
 
@@ -10,9 +39,9 @@ ultimately:
 - MAYBE readd lifetime handling/destruction blocking
 - related? [12:25] <ZeroOne> And the blue outline on those buttons [ALL clicked buttons on Windows 7] won't go away
 	- I get this too
+		- not anymore
 - SWP_NOCOPYBITS to avoid button redraw issues on Windows when not in tab, but only when making resize faster
 - secondary side alignment control in uiBox
-- generate libui.lib and related files
 - Windows: don't abort if a cleanup function fails?
 
 - 32-bit Mac OS X support (requires lots of code changes)
@@ -30,6 +59,31 @@ notes to self
 - explicitly document that uiCheckboxSetChecked() and uiEntrySetText() do not fire uiCheckboxOnToggled() and uiEntryOnChanged(), respectively
 - note that if a menu is requested on systems with menubars on windows but no menus are defined, the result is a blank menubar, with whatever that means left up to the OS to decide
 - note that handling of multiple consecutive separators in menus, leading separators in menus, and trailing separators in menus are all OS-defined
+- note that uiDrawMatrixInvert() does not change the matrix if it fails
+- note that the use of strings that are not strictly valid UTF-8 results in undefined behavior
 
 - test RTL
 	- automate RTL
+- now that stock items are deprecated, I have to maintain translations of the Cancel, Open, and Save buttons on GTK+ myself (thanks baedert in irc.gimp.net/#gtk+)
+	- either that or keep using stock items
+
+- http://blogs.msdn.com/b/oldnewthing/archive/2014/02/26/10503148.aspx
+
+- build optimizations
+
+- use http://www.appveyor.com/ to do Windows build CI since people want CI
+
+
+
+
+
+
+- consider just having the windows backend in C++
+	- consider having it all in C++
+
+
+
+don't forget LONGTERMs as well
+
+notes
+- http://blogs.msdn.com/b/oldnewthing/archive/2004/03/29/101121.aspx on accelerators

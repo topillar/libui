@@ -87,16 +87,16 @@ static void drawOriginal(uiAreaDrawParams *p)
 	uiDrawPathArcTo(path,
 		400, 100,
 		50,
-		30. * (M_PI / 180.),
-		300. * (M_PI / 180.),
+		30. * (uiPi / 180.),
+		300. * (uiPi / 180.),
 		0);
 	// the sweep test below doubles as a clockwise test so a checkbox isn't needed anymore
 	uiDrawPathLineTo(path, 400, 100);
 	uiDrawPathNewFigureWithArc(path,
 		510, 100,
 		50,
-		30. * (M_PI / 180.),
-		300. * (M_PI / 180.),
+		30. * (uiPi / 180.),
+		300. * (uiPi / 180.),
 		0);
 	uiDrawPathCloseFigure(path);
 	// and now with 330 to make sure sweeps work properly
@@ -104,15 +104,15 @@ static void drawOriginal(uiAreaDrawParams *p)
 	uiDrawPathArcTo(path,
 		400, 210,
 		50,
-		30. * (M_PI / 180.),
-		330. * (M_PI / 180.),
+		30. * (uiPi / 180.),
+		330. * (uiPi / 180.),
 		0);
 	uiDrawPathLineTo(path, 400, 210);
 	uiDrawPathNewFigureWithArc(path,
 		510, 210,
 		50,
-		30. * (M_PI / 180.),
-		330. * (M_PI / 180.),
+		30. * (uiPi / 180.),
+		330. * (uiPi / 180.),
 		0);
 	uiDrawPathCloseFigure(path);
 	uiDrawPathEnd(path);
@@ -160,7 +160,7 @@ static void drawArcs(uiAreaDrawParams *p)
 
 	path = uiDrawNewPath(uiDrawFillModeWinding);
 
-	add = (2.0 * M_PI) / 12;
+	add = (2.0 * uiPi) / 12;
 
 	x = start + rad;
 	y = start + rad;
@@ -196,7 +196,7 @@ static void drawArcs(uiAreaDrawParams *p)
 		uiDrawPathNewFigureWithArc(path,
 			x, y,
 			rad,
-			(M_PI / 4), angle,
+			(uiPi / 4), angle,
 			0);
 		angle += add;
 		x += 2 * rad + step;
@@ -210,7 +210,7 @@ static void drawArcs(uiAreaDrawParams *p)
 		uiDrawPathArcTo(path,
 			x, y,
 			rad,
-			(M_PI / 4), angle,
+			(uiPi / 4), angle,
 			0);
 		angle += add;
 		x += 2 * rad + step;
@@ -223,7 +223,7 @@ static void drawArcs(uiAreaDrawParams *p)
 		uiDrawPathNewFigureWithArc(path,
 			x, y,
 			rad,
-			M_PI + (M_PI / 5), angle,
+			uiPi + (uiPi / 5), angle,
 			0);
 		angle += add;
 		x += 2 * rad + step;
@@ -237,7 +237,7 @@ static void drawArcs(uiAreaDrawParams *p)
 		uiDrawPathArcTo(path,
 			x, y,
 			rad,
-			M_PI + (M_PI / 5), angle,
+			uiPi + (uiPi / 5), angle,
 			0);
 		angle += add;
 		x += 2 * rad + step;
@@ -296,7 +296,7 @@ static void d2dClear(uiAreaDrawParams *p, uint32_t color, double alpha)
 
 	d2dSolidBrush(&brush, color, alpha);
 	path = uiDrawNewPath(uiDrawFillModeWinding);
-	uiDrawPathAddRectangle(path, 0, 0, p->ClientWidth, p->ClientHeight);
+	uiDrawPathAddRectangle(path, 0, 0, p->AreaWidth, p->AreaHeight);
 	uiDrawPathEnd(path);
 	uiDrawFill(p->Context, path, &brush);
 	uiDrawFreePath(path);
@@ -314,8 +314,8 @@ static void drawD2DW8QS(uiAreaDrawParams *p)
 	uiDrawPathAddRectangle(path,
 		100,
 		100,
-		(p->ClientWidth - 100) - 100,
-		(p->ClientHeight - 100) - 100);
+		(p->AreaWidth - 100) - 100,
+		(p->AreaHeight - 100) - 100);
 	uiDrawPathEnd(path);
 	uiDrawFill(p->Context, path, &brush);
 	uiDrawFreePath(path);
@@ -344,19 +344,19 @@ static void drawD2DSimpleApp(uiAreaDrawParams *p)
 	sp.Join = uiDrawLineJoinMiter;
 	sp.MiterLimit = uiDrawDefaultMiterLimit;
 
-	for (x = 0; x < p->ClientWidth; x += 10) {
+	for (x = 0; x < p->AreaWidth; x += 10) {
 		path = uiDrawNewPath(uiDrawFillModeWinding);
 		uiDrawPathNewFigure(path, x, 0);
-		uiDrawPathLineTo(path, x, p->ClientHeight);
+		uiDrawPathLineTo(path, x, p->AreaHeight);
 		uiDrawPathEnd(path);
 		uiDrawStroke(p->Context, path, &lightSlateGray, &sp);
 		uiDrawFreePath(path);
 	}
 
-	for (y = 0; y < p->ClientHeight; y += 10) {
+	for (y = 0; y < p->AreaHeight; y += 10) {
 		path = uiDrawNewPath(uiDrawFillModeWinding);
 		uiDrawPathNewFigure(path, 0, y);
-		uiDrawPathLineTo(path, p->ClientWidth, y);
+		uiDrawPathLineTo(path, p->AreaWidth, y);
 		uiDrawPathEnd(path);
 		uiDrawStroke(p->Context, path, &lightSlateGray, &sp);
 		uiDrawFreePath(path);
@@ -364,20 +364,20 @@ static void drawD2DSimpleApp(uiAreaDrawParams *p)
 
 	double left, top, right, bottom;
 
-	left = p->ClientWidth / 2.0 - 50.0;
-	right = p->ClientWidth / 2.0 + 50.0;
-	top = p->ClientHeight / 2.0 - 50.0;
-	bottom = p->ClientHeight / 2.0 + 50.0;
+	left = p->AreaWidth / 2.0 - 50.0;
+	right = p->AreaWidth / 2.0 + 50.0;
+	top = p->AreaHeight / 2.0 - 50.0;
+	bottom = p->AreaHeight / 2.0 + 50.0;
 	path = uiDrawNewPath(uiDrawFillModeWinding);
 	uiDrawPathAddRectangle(path, left, top, right - left, bottom - top);
 	uiDrawPathEnd(path);
 	uiDrawFill(p->Context, path, &lightSlateGray);
 	uiDrawFreePath(path);
 
-	left = p->ClientWidth / 2.0 - 100.0;
-	right = p->ClientWidth / 2.0 + 100.0;
-	top = p->ClientHeight / 2.0 - 100.0;
-	bottom = p->ClientHeight / 2.0 + 100.0;
+	left = p->AreaWidth / 2.0 - 100.0;
+	right = p->AreaWidth / 2.0 + 100.0;
+	top = p->AreaHeight / 2.0 - 100.0;
+	bottom = p->AreaHeight / 2.0 + 100.0;
 	path = uiDrawNewPath(uiDrawFillModeWinding);
 	uiDrawPathAddRectangle(path, left, top, right - left, bottom - top);
 	uiDrawPathEnd(path);
@@ -519,7 +519,7 @@ static void drawD2DRadialBrush(uiAreaDrawParams *p)
 		75, 75,
 		75,
 		0,
-		2 * M_PI,
+		2 * uiPi,
 		0);
 	uiDrawPathEnd(path);
 
@@ -596,7 +596,7 @@ static void drawD2DPathGeometries(uiAreaDrawParams *p)
 	uiDrawPathNewFigureWithArc(sun,
 		(440.0 - 270.0) / 2 + 270.0, 255,
 		85,
-		M_PI, M_PI,
+		uiPi, uiPi,
 		0);
 	uiDrawPathCloseFigure(sun);
 	uiDrawPathEnd(sun);
@@ -730,22 +730,22 @@ static void drawD2DGeometryGroup(uiAreaDrawParams *p)
 	uiDrawPathNewFigureWithArc(alternate,
 		105, 105,
 		25,
-		0, 2 * M_PI,
+		0, 2 * uiPi,
 		0);
 	uiDrawPathNewFigureWithArc(alternate,
 		105, 105,
 		50,
-		0, 2 * M_PI,
+		0, 2 * uiPi,
 		0);
 	uiDrawPathNewFigureWithArc(alternate,
 		105, 105,
 		75,
-		0, 2 * M_PI,
+		0, 2 * uiPi,
 		0);
 	uiDrawPathNewFigureWithArc(alternate,
 		105, 105,
 		100,
-		0, 2 * M_PI,
+		0, 2 * uiPi,
 		0);
 	uiDrawPathEnd(alternate);
 
@@ -753,22 +753,22 @@ static void drawD2DGeometryGroup(uiAreaDrawParams *p)
 	uiDrawPathNewFigureWithArc(winding,
 		105, 105,
 		25,
-		0, 2 * M_PI,
+		0, 2 * uiPi,
 		0);
 	uiDrawPathNewFigureWithArc(winding,
 		105, 105,
 		50,
-		0, 2 * M_PI,
+		0, 2 * uiPi,
 		0);
 	uiDrawPathNewFigureWithArc(winding,
 		105, 105,
 		75,
-		0, 2 * M_PI,
+		0, 2 * uiPi,
 		0);
 	uiDrawPathNewFigureWithArc(winding,
 		105, 105,
 		100,
-		0, 2 * M_PI,
+		0, 2 * uiPi,
 		0);
 	uiDrawPathEnd(winding);
 
@@ -850,7 +850,7 @@ static void drawD2DRotate(uiAreaDrawParams *p)
 	uiDrawMatrixSetIdentity(&m);
 	uiDrawMatrixRotate(&m,
 		468.0, 331.5,
-		45.0 * (M_PI / 180));
+		45.0 * (uiPi / 180));
 	uiDrawTransform(p->Context, &m);
 
 	uiDrawFill(p->Context, path, &fill);
@@ -868,7 +868,7 @@ static void drawD2DRotate(uiAreaDrawParams *p)
 	uiDrawMatrixSetIdentity(&m);
 	uiDrawMatrixRotate(&m,
 		438.0, 301.5,
-		45.0 * (M_PI / 180));
+		45.0 * (uiPi / 180));
 	uiDrawTransform(p->Context, &m);
 
 	uiDrawFill(p->Context, path, &fill);
@@ -993,7 +993,7 @@ void drawD2DSkew(uiAreaDrawParams *p)
 	uiDrawMatrixSetIdentity(&m);
 	uiDrawMatrixSkew(&m,
 		126.0, 301.5,
-		45.0 * (M_PI / 180), 0);
+		45.0 * (uiPi / 180), 0);
 	uiDrawTransform(p->Context, &m);
 
 	uiDrawFill(p->Context, path, &fill);
@@ -1011,7 +1011,7 @@ void drawD2DSkew(uiAreaDrawParams *p)
 	uiDrawMatrixSetIdentity(&m);
 	uiDrawMatrixSkew(&m,
 		0, 0,
-		45.0 * (M_PI / 180), 0);
+		45.0 * (uiPi / 180), 0);
 	uiDrawTransform(p->Context, &m);
 
 	uiDrawFill(p->Context, path, &fill);
@@ -1111,7 +1111,7 @@ static void drawD2DMultiTransforms(uiAreaDrawParams *p)
 	uiDrawMatrixSetIdentity(&mrotate);
 	uiDrawMatrixRotate(&mrotate,
 		330.0, 70.0,
-		45.0 * (M_PI / 180));
+		45.0 * (uiPi / 180));
 
 	// save for when we do the opposite one
 	uiDrawSave(p->Context);
@@ -1136,7 +1136,7 @@ static void drawD2DMultiTransforms(uiAreaDrawParams *p)
 	uiDrawMatrixSetIdentity(&mrotate);
 	uiDrawMatrixRotate(&mrotate,
 		70.0, 70.0,
-		45.0 * (M_PI / 180));
+		45.0 * (uiPi / 180));
 
 	uiDrawStroke(p->Context, path, &original, &originalsp);
 
@@ -1256,8 +1256,8 @@ static void drawCSArc(uiAreaDrawParams *p)
 	double xc = 128.0;
 	double yc = 128.0;
 	double radius = 100.0;
-	double angle1 = 45.0  * (M_PI / 180.0);
-	double angle2 = 180.0 * (M_PI / 180.0);
+	double angle1 = 45.0  * (uiPi / 180.0);
+	double angle2 = 180.0 * (uiPi / 180.0);
 	uiDrawBrush source;
 	uiDrawStrokeParams sp;
 	uiDrawPath *path;
@@ -1289,7 +1289,7 @@ static void drawCSArc(uiAreaDrawParams *p)
 	uiDrawPathNewFigureWithArc(path,
 		xc, yc,
 		10.0,
-		0, 2 * M_PI,
+		0, 2 * uiPi,
 		0);
 	uiDrawPathEnd(path);
 	uiDrawFill(p->Context, path, &source);
@@ -1319,8 +1319,8 @@ static void drawCSArcNegative(uiAreaDrawParams *p)
 	double xc = 128.0;
 	double yc = 128.0;
 	double radius = 100.0;
-	double angle1 = 45.0  * (M_PI / 180.0);
-	double angle2 = 180.0 * (M_PI / 180.0);
+	double angle1 = 45.0  * (uiPi / 180.0);
+	double angle2 = 180.0 * (uiPi / 180.0);
 	uiDrawBrush source;
 	uiDrawStrokeParams sp;
 	uiDrawPath *path;
@@ -1352,7 +1352,7 @@ static void drawCSArcNegative(uiAreaDrawParams *p)
 	uiDrawPathNewFigureWithArc(path,
 		xc, yc,
 		10.0,
-		0, 2 * M_PI,
+		0, 2 * uiPi,
 		0);
 	uiDrawPathEnd(path);
 	uiDrawFill(p->Context, path, &source);
@@ -1396,7 +1396,7 @@ static void drawCSClip(uiAreaDrawParams *p)
 	uiDrawPathNewFigureWithArc(path,
 		128.0, 128.0,
 		76.8,
-		0, 2 * M_PI,
+		0, 2 * uiPi,
 		0);
 	uiDrawPathEnd(path);
 	uiDrawClip(p->Context, path);
@@ -1639,12 +1639,12 @@ static void drawCSFillStyle(uiAreaDrawParams *p)
 	uiDrawPathNewFigureWithArc(path,
 		64, 64,
 		40,
-		0, 2*M_PI,
+		0, 2*uiPi,
 		0);
 	uiDrawPathNewFigureWithArc(path,
 		192, 64,
 		40,
-		0, -2*M_PI,
+		0, -2*uiPi,
 		1);
 	uiDrawPathEnd(path);
 
@@ -1663,12 +1663,12 @@ static void drawCSFillStyle(uiAreaDrawParams *p)
 	uiDrawPathNewFigureWithArc(path,
 		64, 64,
 		40,
-		0, 2*M_PI,
+		0, 2*uiPi,
 		0);
 	uiDrawPathNewFigureWithArc(path,
 		192, 64,
 		40,
-		0, -2*M_PI,
+		0, -2*uiPi,
 		1);
 	uiDrawPathEnd(path);
 
@@ -1728,7 +1728,7 @@ static void drawCSRoundRect(uiAreaDrawParams *p)
 		corner_radius = height / 10.0;   /* and corner curvature radius */
 
 	double radius = corner_radius / aspect;
-	double degrees = M_PI / 180.0;
+	double degrees = uiPi / 180.0;
 
 	uiDrawBrush source;
 	uiDrawStrokeParams sp;
@@ -1748,25 +1748,25 @@ static void drawCSRoundRect(uiAreaDrawParams *p)
 	uiDrawPathNewFigureWithArc(path,
 		x + width - radius, y + radius,
 		radius,
-		-90 * degrees, M_PI / 2,
+		-90 * degrees, uiPi / 2,
 		0);
 	// bottom right corner
 	uiDrawPathArcTo(path,
 		x + width - radius, y + height - radius,
 		radius,
-		0 * degrees, M_PI / 2,
+		0 * degrees, uiPi / 2,
 		0);
 	// bottom left corner
 	uiDrawPathArcTo(path,
 		x + radius, y + height - radius,
 		radius,
-		90 * degrees, M_PI / 2,
+		90 * degrees, uiPi / 2,
 		0);
 	// top left corner
 	uiDrawPathArcTo(path,
 		x + radius, y + radius,
 		radius,
-		180 * degrees, M_PI / 2,
+		180 * degrees, uiPi / 2,
 		0);
 	uiDrawPathCloseFigure(path);
 	uiDrawPathEnd(path);
@@ -1891,7 +1891,7 @@ static void drawCSSetLineJoin(uiAreaDrawParams *p)
 static void cgaddrect(uiDrawPath *path, uiAreaDrawParams *p, double x, double y, double width, double height)
 {
 	uiDrawPathAddRectangle(path,
-		x, p->ClientHeight - y - height,
+		x, p->AreaHeight - y - height,
 		width, height);
 }
 
@@ -1931,8 +1931,6 @@ static void drawQ2DCreateWindowGC(uiAreaDrawParams *p)
 // TODO Advanced Drawing Techniques page?
 
 // TODO Text page, if any?
-
-// TODO Paths page
 
 static const struct drawtest tests[] = {
 	{ "Original uiArea test", drawOriginal },

@@ -21,14 +21,6 @@ struct uiWindow {
 	void *onClosingData;
 };
 
-static void onDestroy(uiWindow *);
-
-uiUnixDefineControlWithOnDestroy(
-	uiWindow,							// type name
-	uiWindowType,							// type function
-	onDestroy(this);						// on destroy
-)
-
 static gboolean onClosing(GtkWidget *win, GdkEvent *e, gpointer data)
 {
 	uiWindow *w = uiWindow(data);
@@ -45,8 +37,10 @@ static int defaultOnClosing(uiWindow *w, void *data)
 	return 0;
 }
 
-static void onDestroy(uiWindow *w)
+static void uiWindowDestroy(uiControl *c)
 {
+	uiWindow *w = uiWindow(c);
+
 	// first hide ourselves
 	gtk_widget_hide(w->widget);
 	// now destroy the child
@@ -56,9 +50,31 @@ static void onDestroy(uiWindow *w)
 	if (w->menubar != NULL)
 		freeMenubar(w->menubar);
 	gtk_widget_destroy(w->vboxWidget);
+	// and finally free ourselves
+	g_object_unref(w->widget);
+	uiFreeControl(uiControl(w));
 }
 
-static void windowCommitShow(uiControl *c)
+uiUnixControlDefaultHandle(uiWindow)
+
+uiControl *uiWindowParent(uiControl *c)
+{
+	return NULL;
+}
+
+void uiWindowSetParent(uiControl *c, uiControl *parent)
+{
+	uiUserBugCannotSetParentOnToplevel("uiWindow");
+}
+
+static int uiWindowToplevel(uiControl *c)
+{
+	return 1;
+}
+
+uiUnixControlDefaultVisible(uiWindow)
+
+static void uiWindowShow(uiControl *c)
 {
 	uiWindow *w = uiWindow(c);
 
@@ -68,13 +84,12 @@ static void windowCommitShow(uiControl *c)
 	gtk_window_present(w->window);
 }
 
-static void windowContainerUpdateState(uiControl *c)
-{
-	uiWindow *w = uiWindow(c);
-
-	if (w->child != NULL)
-		childUpdateState(w->child);
-}
+uiUnixControlDefaultHide(uiWindow)
+uiUnixControlDefaultEnabled(uiWindow)
+uiUnixControlDefaultEnable(uiWindow)
+uiUnixControlDefaultDisable(uiWindow)
+// TODO?
+uiUnixControlDefaultSetContainer(uiWindow)
 
 char *uiWindowTitle(uiWindow *w)
 {
@@ -84,7 +99,6 @@ char *uiWindowTitle(uiWindow *w)
 void uiWindowSetTitle(uiWindow *w, const char *title)
 {
 	gtk_window_set_title(w->window, title);
-	// don't queue resize; the caption isn't part of what affects layout and sizing of the client area (it'll be ellipsized if too long)
 }
 
 void uiWindowOnClosing(uiWindow *w, int (*f)(uiWindow *, void *), void *data)
@@ -96,7 +110,7 @@ void uiWindowOnClosing(uiWindow *w, int (*f)(uiWindow *, void *), void *data)
 void uiWindowSetChild(uiWindow *w, uiControl *child)
 {
 	if (w->child != NULL)
-		childDestroy(w->child);
+		childRemove(w->child);
 	w->child = newChildWithBox(child, uiControl(w), w->vboxContainer, w->margined);
 	if (w->child != NULL) {
 		gtk_widget_set_hexpand(childBox(w->child), TRUE);
@@ -122,7 +136,7 @@ uiWindow *uiNewWindow(const char *title, int width, int height, int hasMenubar)
 {
 	uiWindow *w;
 
-	w = (uiWindow *) uiNewControl(uiWindowType());
+	uiUnixNewControl(uiWindow, w);
 
 	w->widget = gtk_window_new(GTK_WINDOW_TOPLEVEL);
 	w->container = GTK_CONTAINER(w->widget);
@@ -150,9 +164,9 @@ uiWindow *uiNewWindow(const char *title, int width, int height, int hasMenubar)
 	g_signal_connect(w->widget, "delete-event", G_CALLBACK(onClosing), w);
 	uiWindowOnClosing(w, defaultOnClosing, NULL);
 
-	uiUnixFinishNewControl(w, uiWindow);
-	uiControl(w)->CommitShow = windowCommitShow;
-	uiControl(w)->ContainerUpdateState = windowContainerUpdateState;
+	// normally it's SetParent() that does this, but we can't call SetParent() on a uiWindow
+	// TODO we really need to clean this up
+	g_object_ref(w->widget);
 
 	return w;
 }

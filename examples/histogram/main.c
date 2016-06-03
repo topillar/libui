@@ -9,6 +9,7 @@ uiWindow *mainwin;
 uiArea *histogram;
 uiAreaHandler handler;
 uiSpinbox *datapoints[10];
+uiColorButton *colorButton;
 int currentPoint = -1;
 
 // some metrics
@@ -94,17 +95,22 @@ static void handlerDraw(uiAreaHandler *a, uiArea *area, uiAreaDrawParams *p)
 	uiDrawStrokeParams sp;
 	uiDrawMatrix m;
 	double graphWidth, graphHeight;
+	double graphR, graphG, graphB, graphA;
 
 	// fill the area with white
 	setSolidBrush(&brush, colorWhite, 1.0);
 	path = uiDrawNewPath(uiDrawFillModeWinding);
-	uiDrawPathAddRectangle(path, 0, 0, p->ClientWidth, p->ClientHeight);
+	uiDrawPathAddRectangle(path, 0, 0, p->AreaWidth, p->AreaHeight);
 	uiDrawPathEnd(path);
 	uiDrawFill(p->Context, path, &brush);
 	uiDrawFreePath(path);
 
 	// figure out dimensions
-	graphSize(p->ClientWidth, p->ClientHeight, &graphWidth, &graphHeight);
+	graphSize(p->AreaWidth, p->AreaHeight, &graphWidth, &graphHeight);
+
+	// clear sp to avoid passing garbage to uiDrawStroke()
+	// for example, we don't use dashing
+	memset(&sp, 0, sizeof (uiDrawStrokeParams));
 
 	// make a stroke for both the axes and the histogram line
 	sp.Cap = uiDrawLineCapFlat;
@@ -130,15 +136,23 @@ static void handlerDraw(uiAreaHandler *a, uiArea *area, uiAreaDrawParams *p)
 	uiDrawMatrixTranslate(&m, xoffLeft, yoffTop);
 	uiDrawTransform(p->Context, &m);
 
+	// now get the color for the graph itself and set up the brush
+	uiColorButtonColor(colorButton, &graphR, &graphG, &graphB, &graphA);
+	brush.Type = uiDrawBrushTypeSolid;
+	brush.R = graphR;
+	brush.G = graphG;
+	brush.B = graphB;
+	// we set brush->A below to different values for the fill and stroke
+
 	// now create the fill for the graph below the graph line
 	path = constructGraph(graphWidth, graphHeight, 1);
-	setSolidBrush(&brush, colorDodgerBlue, 0.5);
+	brush.A = graphA / 2;
 	uiDrawFill(p->Context, path, &brush);
 	uiDrawFreePath(path);
 
 	// now draw the histogram line
 	path = constructGraph(graphWidth, graphHeight, 0);
-	setSolidBrush(&brush, colorDodgerBlue, 1.0);
+	brush.A = graphA;
 	uiDrawStroke(p->Context, path, &brush, &sp);
 	uiDrawFreePath(path);
 
@@ -160,24 +174,6 @@ static void handlerDraw(uiAreaHandler *a, uiArea *area, uiAreaDrawParams *p)
 	}
 }
 
-static uintmax_t handlerHScrollMax(uiAreaHandler *a, uiArea *area)
-{
-	// we don't scroll
-	return 0;
-}
-
-static uintmax_t handlerVScrollMax(uiAreaHandler *a, uiArea *area)
-{
-	// we don't scroll
-	return 0;
-}
-
-static int handlerRedrawOnResize(uiAreaHandler *a, uiArea *area)
-{
-	// always redraw on resize; we don't scroll
-	return 1;
-}
-
 static int inPoint(double x, double y, double xtest, double ytest)
 {
 	// TODO switch to using a matrix
@@ -195,7 +191,7 @@ static void handlerMouseEvent(uiAreaHandler *a, uiArea *area, uiAreaMouseEvent *
 	double xs[10], ys[10];
 	int i;
 
-	graphSize(e->ClientWidth, e->ClientHeight, &graphWidth, &graphHeight);
+	graphSize(e->AreaWidth, e->AreaHeight, &graphWidth, &graphHeight);
 	pointLocations(graphWidth, graphHeight, xs, ys);
 
 	for (i = 0; i < 10; i++)
@@ -207,6 +203,11 @@ static void handlerMouseEvent(uiAreaHandler *a, uiArea *area, uiAreaMouseEvent *
 	currentPoint = i;
 	// TODO only redraw the relevant area
 	uiAreaQueueRedrawAll(histogram);
+}
+
+static void handlerMouseCrossed(uiAreaHandler *ah, uiArea *a, int left)
+{
+	// do nothing
 }
 
 static void handlerDragBroken(uiAreaHandler *ah, uiArea *a)
@@ -221,6 +222,11 @@ static int handlerKeyEvent(uiAreaHandler *ah, uiArea *a, uiAreaKeyEvent *e)
 }
 
 static void onDatapointChanged(uiSpinbox *s, void *data)
+{
+	uiAreaQueueRedrawAll(histogram);
+}
+
+static void onColorChanged(uiColorButton *b, void *data)
 {
 	uiAreaQueueRedrawAll(histogram);
 }
@@ -244,12 +250,11 @@ int main(void)
 	const char *err;
 	uiBox *hbox, *vbox;
 	int i;
+	uiDrawBrush brush;
 
 	handler.Draw = handlerDraw;
-	handler.HScrollMax = handlerHScrollMax;
-	handler.VScrollMax = handlerVScrollMax;
-	handler.RedrawOnResize = handlerRedrawOnResize;
 	handler.MouseEvent = handlerMouseEvent;
+	handler.MouseCrossed = handlerMouseCrossed;
 	handler.DragBroken = handlerDragBroken;
 	handler.KeyEvent = handlerKeyEvent;
 
@@ -282,6 +287,17 @@ int main(void)
 		uiSpinboxOnChanged(datapoints[i], onDatapointChanged, NULL);
 		uiBoxAppend(vbox, uiControl(datapoints[i]), 0);
 	}
+
+	colorButton = uiNewColorButton();
+	// TODO inline these
+	setSolidBrush(&brush, colorDodgerBlue, 1.0);
+	uiColorButtonSetColor(colorButton,
+		brush.R,
+		brush.G,
+		brush.B,
+		brush.A);
+	uiColorButtonOnChanged(colorButton, onColorChanged, NULL);
+	uiBoxAppend(vbox, uiControl(colorButton), 0);
 
 	histogram = uiNewArea(&handler);
 	uiBoxAppend(hbox, uiControl(histogram), 1);

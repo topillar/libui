@@ -45,8 +45,11 @@ int main(int argc, char *argv[])
 	int i;
 	const char *err;
 	uiWindow *w;
-	uiBox *page2, *page3, *page4, *page5, *page6, *page7, *page8;
+	uiBox *page2, *page3, *page4, *page5;
+	uiBox *page6, *page7, *page8, *page9, *page10;
+	uiBox *page11, *page12, *page13;
 	uiTab *outerTab;
+	uiTab *innerTab;
 	int nomenus = 0;
 	int startspaced = 0;
 
@@ -90,7 +93,7 @@ int main(int argc, char *argv[])
 	uiBoxAppend(mainBox, uiControl(outerTab), 1);
 
 	mainTab = newTab();
-	uiTabAppend(outerTab, "Original", uiControl(mainTab));
+	uiTabAppend(outerTab, "Pages 1-5", uiControl(mainTab));
 
 	// page 1 uses page 2's uiGroup
 	page2 = makePage2();
@@ -108,17 +111,38 @@ int main(int argc, char *argv[])
 	page4 = makePage4();
 	uiTabAppend(mainTab, "Page 4", uiControl(page4));
 
-	page5 = makePage5();
+	page5 = makePage5(w);
 	uiTabAppend(mainTab, "Page 5", uiControl(page5));
 
+	innerTab = newTab();
+	uiTabAppend(outerTab, "Pages 6-10", uiControl(innerTab));
+
 	page6 = makePage6();
-	uiTabAppend(mainTab, "Page 6", uiControl(page6));
+	uiTabAppend(innerTab, "Page 6", uiControl(page6));
 
 	page7 = makePage7();
-	uiTabAppend(mainTab, "Page 7", uiControl(page7));
+	uiTabAppend(innerTab, "Page 7", uiControl(page7));
 
 	page8 = makePage8();
-	uiTabAppend(outerTab, "Page 8", uiControl(page8));
+	uiTabAppend(innerTab, "Page 8", uiControl(page8));
+
+	page9 = makePage9();
+	uiTabAppend(innerTab, "Page 9", uiControl(page9));
+
+	page10 = makePage10();
+	uiTabAppend(innerTab, "Page 10", uiControl(page10));
+
+	innerTab = newTab();
+	uiTabAppend(outerTab, "Pages 11-?", uiControl(innerTab));
+
+//	page11 = makePage11();
+//	uiTabAppend(innerTab, "Page 11", uiControl(page11));
+
+	page12 = makePage12();
+	uiTabAppend(innerTab, "Page 12", uiControl(page12));
+
+	page13 = makePage13();
+	uiTabAppend(innerTab, "Page 13", uiControl(page13));
 
 	if (startspaced)
 		setSpaced(1);

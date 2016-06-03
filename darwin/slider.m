@@ -29,7 +29,7 @@ struct uiSlider {
 };
 
 @interface sliderDelegateClass : NSObject {
-	NSMapTable *sliders;
+	struct mapTable *sliders;
 }
 - (IBAction)onChanged:(id)sender;
 - (void)registerSlider:(uiSlider *)b;
@@ -48,9 +48,7 @@ struct uiSlider {
 
 - (void)dealloc
 {
-	if ([self->sliders count] != 0)
-		complain("attempt to destroy shared slider delegate but sliders are still registered to it");
-	[self->sliders release];
+	mapDestroy(self->sliders);
 	[super dealloc];
 }
 
@@ -72,19 +70,23 @@ struct uiSlider {
 - (void)unregisterSlider:(uiSlider *)s
 {
 	[s->slider setTarget:nil];
-	[self->sliders removeObjectForKey:s->slider];
+	mapDelete(self->sliders, s->slider);
 }
 
 @end
 
 static sliderDelegateClass *sliderDelegate = nil;
 
-uiDarwinDefineControlWithOnDestroy(
-	uiSlider,								// type name
-	uiSliderType,							// type function
-	slider,								// handle
-	[sliderDelegate unregisterSlider:this];		// on destroy
-)
+uiDarwinControlAllDefaultsExceptDestroy(uiSlider, slider)
+
+static void uiSliderDestroy(uiControl *c)
+{
+	uiSlider *s = uiSlider(c);
+
+	[sliderDelegate unregisterSlider:s];
+	[s->slider release];
+	uiFreeControl(uiControl(s));
+}
 
 intmax_t uiSliderValue(uiSlider *s)
 {
@@ -112,8 +114,15 @@ uiSlider *uiNewSlider(intmax_t min, intmax_t max)
 {
 	uiSlider *s;
 	NSSliderCell *cell;
+	intmax_t temp;
 
-	s = (uiSlider *) uiNewControl(uiSliderType());
+	if (min >= max) {
+		temp = min;
+		min = max;
+		max = temp;
+	}
+
+	uiDarwinNewControl(uiSlider, s);
 
 	// a horizontal slider is defined as one where the width > height, not by a flag
 	// to be safe, don't use NSZeroRect, but make it horizontal from the get-go
@@ -129,13 +138,11 @@ uiSlider *uiNewSlider(intmax_t min, intmax_t max)
 	[cell setSliderType:NSLinearSlider];
 
 	if (sliderDelegate == nil) {
-		sliderDelegate = [sliderDelegateClass new];
+		sliderDelegate = [[sliderDelegateClass new] autorelease];
 		[delegates addObject:sliderDelegate];
 	}
 	[sliderDelegate registerSlider:s];
 	uiSliderOnChanged(s, defaultOnChanged, NULL);
-
-	uiDarwinFinishNewControl(s, uiSlider);
 
 	return s;
 }

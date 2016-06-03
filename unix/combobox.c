@@ -11,12 +11,8 @@ struct uiCombobox {
 	gulong onSelectedSignal;
 };
 
-uiUnixDefineControl(
-	uiCombobox,							// type name
-	uiComboboxType						// type function
-)
+uiUnixControlAllDefaults(uiCombobox)
 
-// TODO this is triggered when editing an editable combobox's text
 static void onChanged(GtkComboBox *cbox, gpointer data)
 {
 	uiCombobox *c = uiCombobox(data);
@@ -53,30 +49,18 @@ void uiComboboxOnSelected(uiCombobox *c, void (*f)(uiCombobox *c, void *data), v
 	c->onSelectedData = data;
 }
 
-static uiCombobox *finishNewCombobox(GtkWidget *(*newfunc)(void))
+uiCombobox *uiNewCombobox(void)
 {
 	uiCombobox *c;
 
-	c = (uiCombobox *) uiNewControl(uiComboboxType());
+	uiUnixNewControl(uiCombobox, c);
 
-	c->widget = (*newfunc)();
+	c->widget = gtk_combo_box_text_new();
 	c->combobox = GTK_COMBO_BOX(c->widget);
 	c->comboboxText = GTK_COMBO_BOX_TEXT(c->widget);
 
 	c->onSelectedSignal = g_signal_connect(c->widget, "changed", G_CALLBACK(onChanged), c);
 	uiComboboxOnSelected(c, defaultOnSelected, NULL);
 
-	uiUnixFinishNewControl(c, uiCombobox);
-
 	return c;
-}
-
-uiCombobox *uiNewCombobox(void)
-{
-	return finishNewCombobox(gtk_combo_box_text_new);
-}
-
-uiCombobox *uiNewEditableCombobox(void)
-{
-	return finishNewCombobox(gtk_combo_box_text_new_with_entry);
 }

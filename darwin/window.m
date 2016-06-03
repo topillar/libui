@@ -8,10 +8,11 @@ struct uiWindow {
 	int margined;
 	int (*onClosing)(uiWindow *, void *);
 	void *onClosingData;
+	struct singleChildConstraints constraints;
 };
 
 @interface windowDelegateClass : NSObject<NSWindowDelegate> {
-	NSMapTable *windows;
+	struct mapTable *windows;
 }
 - (BOOL)windowShouldClose:(id)sender;
 - (void)registerWindow:(uiWindow *)w;
@@ -31,9 +32,7 @@ struct uiWindow {
 
 - (void)dealloc
 {
-	if ([self->windows count] != 0)
-		complain("attempt to destroy shared window delegate but windows are still registered to it");
-	[self->windows release];
+	mapDestroy(self->windows);
 	[super dealloc];
 }
 
@@ -57,87 +56,136 @@ struct uiWindow {
 - (void)unregisterWindow:(uiWindow *)w
 {
 	[w->window setDelegate:nil];
-	[self->windows removeObjectForKey:w->window];
+	mapDelete(self->windows, w->window);
 }
 
 - (uiWindow *)lookupWindow:(NSWindow *)w
 {
-	NSValue *v;
+	uiWindow *v;
 
-	v = (NSValue *) [self->windows objectForKey:w];
-	if (v == nil)		// just in case we're called with some OS X-provided window as the key window
-		return NULL;
-	return (uiWindow *) [v pointerValue];
+	v = uiWindow(mapGet(self->windows, w));
+	// this CAN (and IS ALLOWED TO) return NULL, just in case we're called with some OS X-provided window as the key window
+	return v;
 }
 
 @end
 
 static windowDelegateClass *windowDelegate = nil;
 
-static void onDestroy(uiWindow *);
-
-uiDarwinDefineControlWithOnDestroy(
-	uiWindow,							// type name
-	uiWindowType,							// type function
-	window,								// handle
-	onDestroy(this);						// on destroy
-)
-
-static void onDestroy(uiWindow *w)
+static void removeConstraints(uiWindow *w)
 {
-	NSView *childView;
+	NSView *cv;
+
+	cv = [w->window contentView];
+	singleChildConstraintsRemove(&(w->constraints), cv);
+}
+
+static void uiWindowDestroy(uiControl *c)
+{
+	uiWindow *w = uiWindow(c);
 
 	// hide the window
 	[w->window orderOut:w->window];
+	removeConstraints(w);
 	if (w->child != NULL) {
-		childView = (NSView *) uiControlHandle(w->child);
-		[childView removeFromSuperview];
 		uiControlSetParent(w->child, NULL);
+		uiDarwinControlSetSuperview(uiDarwinControl(w->child), nil);
 		uiControlDestroy(w->child);
 	}
 	[windowDelegate unregisterWindow:w];
+	[w->window release];
+	uiFreeControl(uiControl(w));
 }
 
-static void windowCommitShow(uiControl *c)
+uiDarwinControlDefaultHandle(uiWindow, window)
+
+uiControl *uiWindowParent(uiControl *c)
+{
+	return NULL;
+}
+
+void uiWindowSetParent(uiControl *c, uiControl *parent)
+{
+	uiUserBugCannotSetParentOnToplevel("uiWindow");
+}
+
+static int uiWindowToplevel(uiControl *c)
+{
+	return 1;
+}
+
+static int uiWindowVisible(uiControl *c)
+{
+	uiWindow *w = uiWindow(c);
+
+	return [w->window isVisible];
+}
+
+static void uiWindowShow(uiControl *c)
 {
 	uiWindow *w = (uiWindow *) c;
 
 	[w->window makeKeyAndOrderFront:w->window];
 }
 
-static void windowCommitHide(uiControl *c)
+static void uiWindowHide(uiControl *c)
 {
 	uiWindow *w = (uiWindow *) c;
 
 	[w->window orderOut:w->window];
 }
 
-static void windowContainerUpdateState(uiControl *c)
+uiDarwinControlDefaultEnabled(uiWindow, window)
+uiDarwinControlDefaultEnable(uiWindow, window)
+uiDarwinControlDefaultDisable(uiWindow, window)
+
+static void uiWindowSyncEnableState(uiDarwinControl *c, int enabled)
 {
 	uiWindow *w = uiWindow(c);
 
+	if (uiDarwinShouldStopSyncEnableState(uiDarwinControl(w), enabled))
+		return;
 	if (w->child != NULL)
-		controlUpdateState(w->child);
+		uiDarwinControlSyncEnableState(uiDarwinControl(w->child), enabled);
 }
 
-static void windowRelayout(uiDarwinControl *c)
+static void uiWindowSetSuperview(uiDarwinControl *c, NSView *superview)
 {
-	uiWindow *w = uiWindow(c);
-	uiDarwinControl *cc;
+	// TODO
+}
+
+static void windowRelayout(uiWindow *w)
+{
 	NSView *childView;
 	NSView *contentView;
 
+	removeConstraints(w);
 	if (w->child == NULL)
 		return;
-	cc = uiDarwinControl(w->child);
 	childView = (NSView *) uiControlHandle(w->child);
 	contentView = [w->window contentView];
-	[contentView removeConstraints:[contentView constraints]];
-	// first relayout the child
-	(*(cc->Relayout))(cc);
-	// now relayout ourselves
-	layoutSingleView(contentView, childView, w->margined);
+	singleChildConstraintsEstablish(&(w->constraints),
+		contentView, childView,
+		uiDarwinControlHugsTrailingEdge(uiDarwinControl(w->child)),
+		uiDarwinControlHugsBottom(uiDarwinControl(w->child)),
+		w->margined,
+		@"uiWindow");
 }
+
+uiDarwinControlDefaultHugsTrailingEdge(uiWindow, window)
+uiDarwinControlDefaultHugsBottom(uiWindow, window)
+
+static void uiWindowChildEdgeHuggingChanged(uiDarwinControl *c)
+{
+	uiWindow *w = uiWindow(c);
+
+	windowRelayout(w);
+}
+
+// TODO
+uiDarwinControlDefaultHuggingPriority(uiWindow, window)
+uiDarwinControlDefaultSetHuggingPriority(uiWindow, window)
+// end TODO
 
 char *uiWindowTitle(uiWindow *w)
 {
@@ -168,9 +216,10 @@ void uiWindowSetChild(uiWindow *w, uiControl *child)
 	if (w->child != NULL) {
 		uiControlSetParent(w->child, uiControl(w));
 		childView = (NSView *) uiControlHandle(w->child);
-		[[w->window contentView] addSubview:childView];
-		uiDarwinControlTriggerRelayout(uiDarwinControl(w));
+		uiDarwinControlSetSuperview(uiDarwinControl(w->child), [w->window contentView]);
+		uiDarwinControlSyncEnableState(uiDarwinControl(w->child), uiControlEnabledToUser(uiControl(w)));
 	}
+	windowRelayout(w);
 }
 
 int uiWindowMargined(uiWindow *w)
@@ -181,8 +230,7 @@ int uiWindowMargined(uiWindow *w)
 void uiWindowSetMargined(uiWindow *w, int margined)
 {
 	w->margined = margined;
-	if (w->child != NULL)
-		uiDarwinControlTriggerRelayout(uiDarwinControl(w));
+	singleChildConstraintsSetMargined(&(w->constraints), w->margined);
 }
 
 static int defaultOnClosing(uiWindow *w, void *data)
@@ -196,7 +244,7 @@ uiWindow *uiNewWindow(const char *title, int width, int height, int hasMenubar)
 
 	finalizeMenus();
 
-	w = (uiWindow *) uiNewControl(uiWindowType());
+	uiDarwinNewControl(uiWindow, w);
 
 	w->window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, (CGFloat) width, (CGFloat) height)
 		styleMask:(NSTitledWindowMask | NSClosableWindowMask | NSMiniaturizableWindowMask | NSResizableWindowMask)
@@ -204,22 +252,16 @@ uiWindow *uiNewWindow(const char *title, int width, int height, int hasMenubar)
 		defer:YES];
 	[w->window setTitle:toNSString(title)];
 
-	// explicitly release when closed
-	// the only thing that closes the window is us anyway
-	[w->window setReleasedWhenClosed:YES];
+	// do NOT release when closed
+	// we manually do this in uiWindowDestroy() above
+	[w->window setReleasedWhenClosed:NO];
 
 	if (windowDelegate == nil) {
-		windowDelegate = [windowDelegateClass new];
+		windowDelegate = [[windowDelegateClass new] autorelease];
 		[delegates addObject:windowDelegate];
 	}
 	[windowDelegate registerWindow:w];
 	uiWindowOnClosing(w, defaultOnClosing, NULL);
-
-	uiDarwinFinishNewControl(w, uiWindow);
-	uiControl(w)->CommitShow = windowCommitShow;
-	uiControl(w)->CommitHide = windowCommitHide;
-	uiControl(w)->ContainerUpdateState = windowContainerUpdateState;
-	uiDarwinControl(w)->Relayout = windowRelayout;
 
 	return w;
 }

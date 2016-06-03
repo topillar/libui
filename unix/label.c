@@ -8,10 +8,7 @@ struct uiLabel {
 	GtkLabel *label;
 };
 
-uiUnixDefineControl(
-	uiLabel,								// type name
-	uiLabelType							// type function
-)
+uiUnixControlAllDefaults(uiLabel)
 
 char *uiLabelText(uiLabel *l)
 {
@@ -21,23 +18,19 @@ char *uiLabelText(uiLabel *l)
 void uiLabelSetText(uiLabel *l, const char *text)
 {
 	gtk_label_set_text(l->label, text);
-	// changing the text might necessitate a change in the label's size
-	uiControlQueueResize(uiControl(l));
 }
 
 uiLabel *uiNewLabel(const char *text)
 {
 	uiLabel *l;
 
-	l = (uiLabel *) uiNewControl(uiLabelType());
+	uiUnixNewControl(uiLabel, l);
 
 	l->widget = gtk_label_new(text);
 	l->misc = GTK_MISC(l->widget);
 	l->label = GTK_LABEL(l->widget);
 
 	gtk_misc_set_alignment(l->misc, 0, 0);
-
-	uiUnixFinishNewControl(l, uiLabel);
 
 	return l;
 }

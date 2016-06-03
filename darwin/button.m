@@ -9,7 +9,7 @@ struct uiButton {
 };
 
 @interface buttonDelegateClass : NSObject {
-	NSMapTable *buttons;
+	struct mapTable *buttons;
 }
 - (IBAction)onClicked:(id)sender;
 - (void)registerButton:(uiButton *)b;
@@ -28,9 +28,7 @@ struct uiButton {
 
 - (void)dealloc
 {
-	if ([self->buttons count] != 0)
-		complain("attempt to destroy shared button delegate but buttons are still registered to it");
-	[self->buttons release];
+	mapDestroy(self->buttons);
 	[super dealloc];
 }
 
@@ -52,19 +50,23 @@ struct uiButton {
 - (void)unregisterButton:(uiButton *)b
 {
 	[b->button setTarget:nil];
-	[self->buttons removeObjectForKey:b->button];
+	mapDelete(self->buttons, b->button);
 }
 
 @end
 
 static buttonDelegateClass *buttonDelegate = nil;
 
-uiDarwinDefineControlWithOnDestroy(
-	uiButton,								// type name
-	uiButtonType,							// type function
-	button,								// handle
-	[buttonDelegate unregisterButton:this];		// on destroy
-)
+uiDarwinControlAllDefaultsExceptDestroy(uiButton, button)
+
+static void uiButtonDestroy(uiControl *c)
+{
+	uiButton *b = uiButton(c);
+
+	[buttonDelegate unregisterButton:b];
+	[b->button release];
+	uiFreeControl(uiControl(b));
+}
 
 char *uiButtonText(uiButton *b)
 {
@@ -74,8 +76,6 @@ char *uiButtonText(uiButton *b)
 void uiButtonSetText(uiButton *b, const char *text)
 {
 	[b->button setTitle:toNSString(text)];
-	// this may result in the size of the button changing
-	uiDarwinControlTriggerRelayout(uiDarwinControl(b));
 }
 
 void uiButtonOnClicked(uiButton *b, void (*f)(uiButton *, void *), void *data)
@@ -93,7 +93,7 @@ uiButton *uiNewButton(const char *text)
 {
 	uiButton *b;
 
-	b = (uiButton *) uiNewControl(uiButtonType());
+	uiDarwinNewControl(uiButton, b);
 
 	b->button = [[NSButton alloc] initWithFrame:NSZeroRect];
 	[b->button setTitle:toNSString(text)];
@@ -103,13 +103,11 @@ uiButton *uiNewButton(const char *text)
 	uiDarwinSetControlFont(b->button, NSRegularControlSize);
 
 	if (buttonDelegate == nil) {
-		buttonDelegate = [buttonDelegateClass new];
+		buttonDelegate = [[buttonDelegateClass new] autorelease];
 		[delegates addObject:buttonDelegate];
 	}
 	[buttonDelegate registerButton:b];
 	uiButtonOnClicked(b, defaultOnClicked, NULL);
-
-	uiDarwinFinishNewControl(b, uiButton);
 
 	return b;
 }

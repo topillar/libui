@@ -1,4 +1,4 @@
-// 7 april 2015
+// 21 april 2016
 
 /*
 This file assumes that you have included <windows.h> and "ui.h" beforehand. It provides API-specific functions for interfacing with foreign controls in Windows.
@@ -7,154 +7,248 @@ This file assumes that you have included <windows.h> and "ui.h" beforehand. It p
 #ifndef __LIBUI_UI_WINDOWS_H__
 #define __LIBUI_UI_WINDOWS_H__
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef struct uiWindowsSizing uiWindowsSizing;
 
 typedef struct uiWindowsControl uiWindowsControl;
 struct uiWindowsControl {
 	uiControl c;
-	void (*CommitSetParent)(uiWindowsControl *, HWND);
-	void (*MinimumSize)(uiWindowsControl *, uiWindowsSizing *, intmax_t *, intmax_t *);
-	void (*Relayout)(uiWindowsControl *, intmax_t, intmax_t, intmax_t, intmax_t);
+	uiControl *parent;
+	// TODO this should be int on both os x and windows
+	BOOL enabled;
+	BOOL visible;
+	void (*SyncEnableState)(uiWindowsControl *, int);
+	void (*SetParentHWND)(uiWindowsControl *, HWND);
+	// TODO consider changing these from intmax_t to int
+	void (*MinimumSize)(uiWindowsControl *, intmax_t *, intmax_t *);
+	void (*MinimumSizeChanged)(uiWindowsControl *);
+	void (*LayoutRect)(uiWindowsControl *c, RECT *r);
 	void (*AssignControlIDZOrder)(uiWindowsControl *, LONG_PTR *, HWND *);
-	void (*ArrangeChildrenControlIDsZOrder)(uiWindowsControl *);
 };
-_UI_EXTERN uintmax_t uiWindowsControlType(void);
-#define uiWindowsControl(this) ((uiWindowsControl *) uiIsA((this), uiWindowsControlType(), 1))
+#define uiWindowsControl(this) ((uiWindowsControl *) (this))
 // TODO document
-_UI_EXTERN void uiWindowsControlQueueRelayout(uiWindowsControl *);
+_UI_EXTERN void uiWindowsControlSyncEnableState(uiWindowsControl *, int);
+_UI_EXTERN void uiWindowsControlSetParentHWND(uiWindowsControl *, HWND);
+_UI_EXTERN void uiWindowsControlMinimumSize(uiWindowsControl *, intmax_t *, intmax_t *);
+_UI_EXTERN void uiWindowsControlMinimumSizeChanged(uiWindowsControl *);
+_UI_EXTERN void uiWindowsControlLayoutRect(uiWindowsControl *, RECT *);
+_UI_EXTERN void uiWindowsControlAssignControlIDZOrder(uiWindowsControl *, LONG_PTR *, HWND *);
 
 // TODO document
-#define uiWindowsDefineControlWithOnDestroy(type, typefn, onDestroy) \
-	static uintmax_t _ ## type ## Type = 0; \
-	uintmax_t typefn(void) \
+#define uiWindowsControlDefaultDestroy(type) \
+	static void type ## Destroy(uiControl *c) \
 	{ \
-		if (_ ## type ## Type == 0) \
-			_ ## type ## Type = uiRegisterType(#type, uiWindowsControlType(), sizeof (type)); \
-		return _ ## type ## Type; \
-	} \
-	static void _ ## type ## CommitDestroy(uiControl *c) \
-	{ \
-		type *this = type(c); \
-		onDestroy; \
-		uiWindowsEnsureDestroyWindow(this->hwnd); \
-	} \
-	static uintptr_t _ ## type ## Handle(uiControl *c) \
+		uiWindowsEnsureDestroyWindow(type(c)->hwnd); \
+		uiFreeControl(c); \
+	}
+#define uiWindowsControlDefaultHandle(type) \
+	static uintptr_t type ## Handle(uiControl *c) \
 	{ \
 		return (uintptr_t) (type(c)->hwnd); \
-	} \
-	static void _ ## type ## ContainerUpdateState(uiControl *c) \
+	}
+#define uiWindowsControlDefaultParent(type) \
+	static uiControl *type ## Parent(uiControl *c) \
 	{ \
-		/* do nothing */ \
-	} \
-	static void _ ## type ## CommitSetParent(uiWindowsControl *c, HWND parent) \
+		return uiWindowsControl(c)->parent; \
+	}
+#define uiWindowsControlDefaultSetParent(type) \
+	static void type ## SetParent(uiControl *c, uiControl *parent) \
 	{ \
-		uiWindowsEnsureSetParent(type(c)->hwnd, parent); \
-	} \
-	static void _ ## type ## Relayout(uiWindowsControl *c, intmax_t x, intmax_t y, intmax_t width, intmax_t height) \
+		uiControlVerifySetParent(c, parent); \
+		uiWindowsControl(c)->parent = parent; \
+	}
+#define uiWindowsControlDefaultToplevel(type) \
+	static int type ## Toplevel(uiControl *c) \
 	{ \
-		uiWindowsEnsureMoveWindow(type(c)->hwnd, x, y, width, height); \
-	} \
-	static void minimumSize(uiWindowsControl *c, uiWindowsSizing *d, intmax_t *width, intmax_t *height); \
-	static void _ ## type ## AssignControlIDZOrder(uiWindowsControl *c, LONG_PTR *controlID, HWND *insertAfter) \
+		return 0; \
+	}
+#define uiWindowsControlDefaultVisible(type) \
+	static int type ## Visible(uiControl *c) \
 	{ \
-		uiWindowsEnsureAssignControlIDZOrder(type(c)->hwnd, *controlID, *insertAfter); \
-		(*controlID)++; \
-		*insertAfter = type(c)->hwnd; \
-	} \
-	static void _ ## type ## ArrangeChildrenControlIDsZOrder(uiWindowsControl *c) \
+		return uiWindowsControl(c)->visible; \
+	}
+#define uiWindowsControlDefaultShow(type) \
+	static void type ## Show(uiControl *c) \
 	{ \
-		/* do nothing */ \
+		uiWindowsControl(c)->visible = 1; \
+		ShowWindow(type(c)->hwnd, SW_SHOW); \
+	}
+#define uiWindowsControlDefaultHide(type) \
+	static void type ## Hide(uiControl *c) \
+	{ \
+		uiWindowsControl(c)->visible = 0; \
+		ShowWindow(type(c)->hwnd, SW_HIDE); \
+	}
+#define uiWindowsControlDefaultEnabled(type) \
+	static int type ## Enabled(uiControl *c) \
+	{ \
+		return uiWindowsControl(c)->enabled; \
+	}
+#define uiWindowsControlDefaultEnable(type) \
+	static void type ## Enable(uiControl *c) \
+	{ \
+		uiWindowsControl(c)->enabled = 1; \
+		uiWindowsControlSyncEnableState(uiWindowsControl(c), uiControlEnabledToUser(c)); \
+	}
+#define uiWindowsControlDefaultDisable(type) \
+	static void type ## Disable(uiControl *c) \
+	{ \
+		uiWindowsControl(c)->enabled = 0; \
+		uiWindowsControlSyncEnableState(uiWindowsControl(c), uiControlEnabledToUser(c)); \
+	}
+#define uiWindowsControlDefaultSyncEnableState(type) \
+	static void type ## SyncEnableState(uiWindowsControl *c, int enabled) \
+	{ \
+		if (uiWindowsShouldStopSyncEnableState(c, enabled)) \
+			return; \
+		EnableWindow(type(c)->hwnd, enabled); \
+	}
+#define uiWindowsControlDefaultSetParentHWND(type) \
+	static void type ## SetParentHWND(uiWindowsControl *c, HWND parent) \
+	{ \
+		uiWindowsEnsureSetParentHWND(type(c)->hwnd, parent); \
+	}
+// note that there is no uiWindowsControlDefaultMinimumSize(); you MUST define this yourself!
+#define uiWindowsControlDefaultMinimumSizeChanged(type) \
+	static void type ## MinimumSizeChanged(uiWindowsControl *c) \
+	{ \
+		if (uiWindowsControlTooSmall(c)) { \
+			uiWindowsControlContinueMinimumSizeChanged(c); \
+			return; \
+		} \
+		/* otherwise do nothing; we have no children */ \
+	}
+#define uiWindowsControlDefaultLayoutRect(type) \
+	static void type ## LayoutRect(uiWindowsControl *c, RECT *r) \
+	{ \
+		/* use the window rect as we include the non-client area in the sizes */ \
+		uiWindowsEnsureGetWindowRect(type(c)->hwnd, r); \
+	}
+#define uiWindowsControlDefaultAssignControlIDZOrder(type) \
+	static void type ## AssignControlIDZOrder(uiWindowsControl *c, LONG_PTR *controlID, HWND *insertAfter) \
+	{ \
+		uiWindowsEnsureAssignControlIDZOrder(type(c)->hwnd, controlID, insertAfter); \
 	}
 
-#define uiWindowsDefineControl(type, typefn) \
-	uiWindowsDefineControlWithOnDestroy(type, typefn, (void) this;)
+#define uiWindowsControlAllDefaultsExceptDestroy(type) \
+	uiWindowsControlDefaultHandle(type) \
+	uiWindowsControlDefaultParent(type) \
+	uiWindowsControlDefaultSetParent(type) \
+	uiWindowsControlDefaultToplevel(type) \
+	uiWindowsControlDefaultVisible(type) \
+	uiWindowsControlDefaultShow(type) \
+	uiWindowsControlDefaultHide(type) \
+	uiWindowsControlDefaultEnabled(type) \
+	uiWindowsControlDefaultEnable(type) \
+	uiWindowsControlDefaultDisable(type) \
+	uiWindowsControlDefaultSyncEnableState(type) \
+	uiWindowsControlDefaultSetParentHWND(type) \
+	uiWindowsControlDefaultMinimumSizeChanged(type) \
+	uiWindowsControlDefaultLayoutRect(type) \
+	uiWindowsControlDefaultAssignControlIDZOrder(type)
 
-#define uiWindowsFinishNewControl(variable, type) \
-	uiControl(variable)->CommitDestroy = _ ## type ## CommitDestroy; \
-	uiControl(variable)->Handle = _ ## type ## Handle; \
-	uiControl(variable)->ContainerUpdateState = _ ## type ## ContainerUpdateState; \
-	uiWindowsControl(variable)->CommitSetParent = _ ## type ## CommitSetParent; \
-	uiWindowsControl(variable)->MinimumSize = minimumSize; \
-	uiWindowsControl(variable)->Relayout = _ ## type ## Relayout; \
-	uiWindowsControl(variable)->AssignControlIDZOrder = _ ## type ## AssignControlIDZOrder; \
-	uiWindowsControl(variable)->ArrangeChildrenControlIDsZOrder = _ ## type ## ArrangeChildrenControlIDsZOrder; \
-	uiWindowsFinishControl(uiControl(variable));
+#define uiWindowsControlAllDefaults(type) \
+	uiWindowsControlDefaultDestroy(type) \
+	uiWindowsControlAllDefaultsExceptDestroy(type)
 
-// This is a function used to set up a control.
-// Don't call it directly; use uiWindowsFinishNewControl() instead.
-_UI_EXTERN void uiWindowsFinishControl(uiControl *c);
+// TODO document
+#define uiWindowsNewControl(type, var) \
+	var = type(uiWindowsAllocControl(sizeof (type), type ## Signature, #type)); \
+	uiControl(var)->Destroy = type ## Destroy; \
+	uiControl(var)->Handle = type ## Handle; \
+	uiControl(var)->Parent = type ## Parent; \
+	uiControl(var)->SetParent = type ## SetParent; \
+	uiControl(var)->Toplevel = type ## Toplevel; \
+	uiControl(var)->Visible = type ## Visible; \
+	uiControl(var)->Show = type ## Show; \
+	uiControl(var)->Hide = type ## Hide; \
+	uiControl(var)->Enabled = type ## Enabled; \
+	uiControl(var)->Enable = type ## Enable; \
+	uiControl(var)->Disable = type ## Disable; \
+	uiWindowsControl(var)->SyncEnableState = type ## SyncEnableState; \
+	uiWindowsControl(var)->SetParentHWND = type ## SetParentHWND; \
+	uiWindowsControl(var)->MinimumSize = type ## MinimumSize; \
+	uiWindowsControl(var)->MinimumSizeChanged = type ## MinimumSizeChanged; \
+	uiWindowsControl(var)->LayoutRect = type ## LayoutRect; \
+	uiWindowsControl(var)->AssignControlIDZOrder = type ## AssignControlIDZOrder; \
+	uiWindowsControl(var)->visible = 1; \
+	uiWindowsControl(var)->enabled = 1;
+// TODO document
+_UI_EXTERN uiWindowsControl *uiWindowsAllocControl(size_t n, uint32_t typesig, const char *typenamestr);
 
-// This creates a HWND compatible with libui.
-// It has no failure state; libui handles errors for you.
+// TODO document
 _UI_EXTERN HWND uiWindowsEnsureCreateControlHWND(DWORD dwExStyle, LPCWSTR lpClassName, LPCWSTR lpWindowName, DWORD dwStyle, HINSTANCE hInstance, LPVOID lpParam, BOOL useStandardControlFont);
 
-// This is a wrapper for certain Windows API functions; use them to have libui handle errors for you.
+// TODO document
 _UI_EXTERN void uiWindowsEnsureDestroyWindow(HWND hwnd);
-_UI_EXTERN void uiWindowsEnsureSetParent(HWND hwnd, HWND parent);
 
-// Use this in your Relayout() implementation to move and resize HWNDs. libui handles errors for you.
-_UI_EXTERN void uiWindowsEnsureMoveWindow(HWND hwnd, intmax_t x, intmax_t y, intmax_t width, intmax_t height);
+// TODO document
+// TODO document that this should only be used in SetParentHWND() implementations
+_UI_EXTERN void uiWindowsEnsureSetParentHWND(HWND hwnd, HWND parent);
 
-// Use this in implementations of AssignControlIDZOrder().
-// libui handles errors for you.
-_UI_EXTERN void uiWindowsEnsureAssignControlIDZOrder(HWND hwnd, LONG_PTR controlID, HWND insertAfter);
+// TODO document
+_UI_EXTERN void uiWindowsEnsureAssignControlIDZOrder(HWND hwnd, LONG_PTR *controlID, HWND *insertAfter);
 
-// Use this to tell a control's parent that the control needs to rearrange its Z-order.
-_UI_EXTERN void uiWindowsRearrangeControlIDsZOrder(uiControl *);
+// TODO document
+_UI_EXTERN void uiWindowsEnsureGetClientRect(HWND hwnd, RECT *r);
+_UI_EXTERN void uiWindowsEnsureGetWindowRect(HWND hwnd, RECT *r);
 
-////////////////////////////////////////////
-/////////////////// TODO ///////////////////
-////////////////////////////////////////////
+// TODO document
+_UI_EXTERN char *uiWindowsWindowText(HWND hwnd);
+_UI_EXTERN void uiWindowsSetWindowText(HWND hwnd, const char *text);
 
-// These provide single-HWND implementations of uiControl methods you can use in yours.
-_UI_EXTERN void uiWindowsUtilDestroy(HWND hwnd);
-_UI_EXTERN void uiWindowsUtilSetParent(HWND hwnd, uiControl *parent);
-_UI_EXTERN void uiWindowsUtilShow(HWND hwnd);
-_UI_EXTERN void uiWindowsUtilHide(HWND hwnd);
-_UI_EXTERN void uiWindowsUtilEnable(HWND hwnd);
-_UI_EXTERN void uiWindowsUtilDisable(HWND hwnd);
-_UI_EXTERN uintptr_t uiWindowsUtilStartZOrder(HWND hwnd);
-_UI_EXTERN uintptr_t uiWindowsUtilSetZOrder(HWND hwnd, uintptr_t insertAfter);
-_UI_EXTERN int uiWindowsUtilHasTabStops(HWND hwnd);
+// TODO document
+_UI_EXTERN intmax_t uiWindowsWindowTextWidth(HWND hwnd);
 
-// This contains the Windows-specific parts of the uiSizing structure.
-// BaseX and BaseY are the dialog base units.
-// InternalLeading is the standard control font's internal leading; labels in uiForms use this for correct Y positioning.
-// CoordFrom and CoordTo are the window handles to convert coordinates passed to uiControlResize() from and to (viaa MapWindowRect()) before passing to one of the Windows API resizing functions.
+// TODO document
+// TODO point out this should only be used in a resize cycle
+_UI_EXTERN void uiWindowsEnsureMoveWindowDuringResize(HWND hwnd, intmax_t x, intmax_t y, intmax_t width, intmax_t height);
+
+// TODO document
+_UI_EXTERN void uiWindowsRegisterWM_COMMANDHandler(HWND hwnd, BOOL (*handler)(uiControl *, HWND, WORD, LRESULT *), uiControl *c);
+_UI_EXTERN void uiWindowsUnregisterWM_COMMANDHandler(HWND hwnd);
+
+// TODO document
+_UI_EXTERN void uiWindowsRegisterWM_NOTIFYHandler(HWND hwnd, BOOL (*handler)(uiControl *, HWND, NMHDR *, LRESULT *), uiControl *c);
+_UI_EXTERN void uiWindowsUnregisterWM_NOTIFYHandler(HWND hwnd);
+
+// TODO document
+_UI_EXTERN void uiWindowsRegisterWM_HSCROLLHandler(HWND hwnd, BOOL (*handler)(uiControl *, HWND, WORD, LRESULT *), uiControl *c);
+_UI_EXTERN void uiWindowsUnregisterWM_HSCROLLHandler(HWND hwnd);
+
+// TODO document
+_UI_EXTERN void uiWindowsRegisterReceiveWM_WININICHANGE(HWND hwnd);
+_UI_EXTERN void uiWindowsUnregisterReceiveWM_WININICHANGE(HWND hwnd);
+
+// TODO document
+typedef struct uiWindowsSizing uiWindowsSizing;
 struct uiWindowsSizing {
-	intmax_t XPadding;
-	intmax_t YPadding;
 	int BaseX;
 	int BaseY;
 	LONG InternalLeading;
-	HWND CoordFrom;
-	HWND CoordTo;
 };
-// Use these to create and destroy uiWindowsSizings.
-_UI_EXTERN uiWindowsSizing *uiWindowsNewSizing(HWND hwnd);
-_UI_EXTERN void uiWindowsFreeSizing(uiWindowsSizing *d);
-// Use these in your preferredSize() implementation with baseX and baseY.
-#define uiWindowsDlgUnitsToX(dlg, baseX) MulDiv((dlg), baseX, 4)
-#define uiWindowsDlgUnitsToY(dlg, baseY) MulDiv((dlg), baseY, 8)
+_UI_EXTERN void uiWindowsGetSizing(HWND hwnd, uiWindowsSizing *sizing);
+_UI_EXTERN void uiWindowsSizingDlgUnitsToPixels(uiWindowsSizing *sizing, int *x, int *y);
+_UI_EXTERN void uiWindowsSizingStandardPadding(uiWindowsSizing *sizing, int *x, int *y);
 
-// and use this if you need the text of the window width
-_UI_EXTERN intmax_t uiWindowsWindowTextWidth(HWND hwnd);
+// TODO document
+_UI_EXTERN HWND uiWindowsMakeContainer(uiWindowsControl *c, void (*onResize)(uiWindowsControl *));
 
-// these functions get and set the window text for a single HWND
-// the value returned should be freed with uiFreeText()
-_UI_EXTERN char *uiWindowsUtilText(HWND);
-_UI_EXTERN void uiWindowsUtilSetText(HWND, const char *);
+// TODO document
+_UI_EXTERN BOOL uiWindowsControlTooSmall(uiWindowsControl *c);
+_UI_EXTERN void uiWindowsControlContinueMinimumSizeChanged(uiWindowsControl *c);
 
-// These provide event handling.
-// For WM_COMMAND, the WORD parameter is the notification code.
-// For WM_HSCROLL, the WORD parameter is the scroll operation.
-_UI_EXTERN void uiWindowsRegisterWM_COMMANDHandler(HWND, BOOL (*)(uiControl *, HWND, WORD, LRESULT *), uiControl *);
-_UI_EXTERN void uiWindowsRegisterWM_NOTIFYHandler(HWND, BOOL (*)(uiControl *, HWND, NMHDR *, LRESULT *), uiControl *);
-_UI_EXTERN void uiWindowsRegisterWM_HSCROLLHandler(HWND, BOOL (*)(uiControl *, HWND, WORD, LRESULT *), uiControl *);
-_UI_EXTERN void uiWindowsUnregisterWM_COMMANDHandler(HWND);
-_UI_EXTERN void uiWindowsUnregisterWM_NOTIFYHandler(HWND);
-_UI_EXTERN void uiWindowsUnregisterWM_HSCROLLHandler(HWND);
-_UI_EXTERN void uiWindowsRegisterReceiveWM_WININICHANGE(HWND);
-_UI_EXTERN void uiWindowsUnregisterReceiveWM_WININICHANGE(HWND);
+// TODO document
+_UI_EXTERN void uiWindowsControlAssignSoleControlIDZOrder(uiWindowsControl *);
+
+// TODO document
+_UI_EXTERN BOOL uiWindowsShouldStopSyncEnableState(uiWindowsControl *c, int enabled);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

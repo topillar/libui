@@ -6,17 +6,13 @@ struct uiDateTimePicker {
 	NSDatePicker *dp;
 };
 
-uiDarwinDefineControl(
-	uiDateTimePicker,						// type name
-	uiDateTimePickerType,					// type function
-	dp									// handle
-)
+uiDarwinControlAllDefaults(uiDateTimePicker, dp)
 
 static uiDateTimePicker *finishNewDateTimePicker(NSDatePickerElementFlags elements)
 {
 	uiDateTimePicker *d;
 
-	d = (uiDateTimePicker *) uiNewControl(uiDateTimePickerType());
+	uiDarwinNewControl(uiDateTimePicker, d);
 
 	d->dp = [[NSDatePicker alloc] initWithFrame:NSZeroRect];
 	[d->dp setBordered:NO];
@@ -26,8 +22,6 @@ static uiDateTimePicker *finishNewDateTimePicker(NSDatePickerElementFlags elemen
 	[d->dp setDatePickerElements:elements];
 	[d->dp setDatePickerMode:NSSingleDateMode];
 	uiDarwinSetControlFont(d->dp, NSRegularControlSize);
-
-	uiDarwinFinishNewControl(d, uiDateTimePicker);
 
 	return d;
 }

@@ -11,17 +11,21 @@ struct uiRadioButtons {
 	GPtrArray *buttons;
 };
 
-static void onDestroy(uiRadioButtons *);
+uiUnixControlAllDefaultsExceptDestroy(uiRadioButtons)
 
-uiUnixDefineControlWithOnDestroy(
-	uiRadioButtons,						// type name
-	uiRadioButtonsType,						// type function
-	onDestroy(this);						// on destroy
-)
-
-static void onDestroy(uiRadioButtons *r)
+static void uiRadioButtonsDestroy(uiControl *c)
 {
-	// TODO
+	uiRadioButtons *r = uiRadioButtons(c);
+	GtkWidget *b;
+
+	while (r->buttons->len != 0) {
+		b = GTK_WIDGET(g_ptr_array_remove_index(r->buttons, 0));
+		gtk_widget_destroy(b);
+	}
+	g_ptr_array_free(r->buttons, TRUE);
+	// and free ourselves
+	g_object_unref(r->widget);
+	uiFreeControl(uiControl(r));
 }
 
 void uiRadioButtonsAppend(uiRadioButtons *r, const char *text)
@@ -36,22 +40,19 @@ void uiRadioButtonsAppend(uiRadioButtons *r, const char *text)
 	gtk_container_add(r->container, rb);
 	g_ptr_array_add(r->buttons, rb);
 	gtk_widget_show(rb);
-	uiControlQueueResize(uiControl(r));
 }
 
 uiRadioButtons *uiNewRadioButtons(void)
 {
 	uiRadioButtons *r;
 
-	r = (uiRadioButtons *) uiNewControl(uiRadioButtonsType());
+	uiUnixNewControl(uiRadioButtons, r);
 
 	r->widget = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
 	r->container = GTK_CONTAINER(r->widget);
 	r->box = GTK_BOX(r->widget);
 
 	r->buttons = g_ptr_array_new();
-
-	uiUnixFinishNewControl(r, uiRadioButtons);
 
 	return r;
 }

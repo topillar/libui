@@ -1,73 +1,70 @@
 // 16 august 2015
 #import "uipriv_darwin.h"
 
-static uintmax_t type_uiDarwinControl = 0;
-
-uintmax_t uiDarwinControlType(void)
+void uiDarwinControlSyncEnableState(uiDarwinControl *c, int state)
 {
-	if (type_uiDarwinControl == 0)
-		type_uiDarwinControl = uiRegisterType("uiDarwinControl", uiControlType(), sizeof (uiDarwinControl));
-	return type_uiDarwinControl;
+	(*(c->SyncEnableState))(c, state);
 }
 
-void uiDarwinControlTriggerRelayout(uiDarwinControl *c)
+void uiDarwinControlSetSuperview(uiDarwinControl *c, NSView *superview)
 {
-	uiControl *p;
-
-	p = toplevelOwning(uiControl(c));
-	if (p == NULL)		// not in a window
-		return;
-	c = uiDarwinControl(p);
-	(*(c->Relayout))(uiDarwinControl(c));
+	(*(c->SetSuperview))(c, superview);
 }
 
-static void defaultCommitShow(uiControl *c)
+BOOL uiDarwinControlHugsTrailingEdge(uiDarwinControl *c)
 {
-	NSView *view;
-
-	view = (NSView *) uiControlHandle(c);
-	[view setHidden:NO];
+	return (*(c->HugsTrailingEdge))(c);
 }
 
-static void defaultCommitHide(uiControl *c)
+BOOL uiDarwinControlHugsBottom(uiDarwinControl *c)
 {
-	NSView *view;
-
-	view = (NSView *) uiControlHandle(c);
-	[view setHidden:YES];
+	return (*(c->HugsBottom))(c);
 }
 
-void osCommitEnable(uiControl *c)
+void uiDarwinControlChildEdgeHuggingChanged(uiDarwinControl *c)
 {
-	NSControl *view;
-
-	view = (NSControl *) uiControlHandle(c);
-	if ([view respondsToSelector:@selector(setEnabled:)])
-		[view setEnabled:YES];
+	(*(c->ChildEdgeHuggingChanged))(c);
 }
 
-void osCommitDisable(uiControl *c)
+NSLayoutPriority uiDarwinControlHuggingPriority(uiDarwinControl *c, NSLayoutConstraintOrientation orientation)
 {
-	NSControl *view;
-
-	view = (NSControl *) uiControlHandle(c);
-	if ([view respondsToSelector:@selector(setEnabled:)])
-		[view setEnabled:NO];
+	return (*(c->HuggingPriority))(c, orientation);
 }
 
-void uiDarwinFinishControl(uiControl *c)
+void uiDarwinControlSetHuggingPriority(uiDarwinControl *c, NSLayoutPriority priority, NSLayoutConstraintOrientation orientation)
 {
-	NSView *view;
-
-	view = (NSView *) uiControlHandle(c);
-	[view retain];
-	if (!isToplevel(c))
-		[view setTranslatesAutoresizingMaskIntoConstraints:NO];
-	c->CommitShow = defaultCommitShow;
-	c->CommitHide = defaultCommitHide;
+	(*(c->SetHuggingPriority))(c, priority, orientation);
 }
 
 void uiDarwinSetControlFont(NSControl *c, NSControlSize size)
 {
 	[c setFont:[NSFont systemFontOfSize:[NSFont systemFontSizeForControlSize:size]]];
+}
+
+#define uiDarwinControlSignature 0x44617277
+
+uiDarwinControl *uiDarwinAllocControl(size_t n, uint32_t typesig, const char *typenamestr)
+{
+	return uiDarwinControl(uiAllocControl(n, uiDarwinControlSignature, typesig, typenamestr));
+}
+
+BOOL uiDarwinShouldStopSyncEnableState(uiDarwinControl *c, BOOL enabled)
+{
+	int ce;
+
+	ce = uiControlEnabled(uiControl(c));
+	// only stop if we're going from disabled back to enabled; don't stop under any other condition
+	// (if we stop when going from enabled to disabled then enabled children of a disabled control won't get disabled at the OS level)
+	if (!ce && enabled)
+		return YES;
+	return NO;
+}
+
+void uiDarwinNotifyEdgeHuggingChanged(uiDarwinControl *c)
+{
+	uiControl *parent;
+
+	parent = uiControlParent(uiControl(c));
+	if (parent != NULL)
+		uiDarwinControlChildEdgeHuggingChanged(uiDarwinControl(parent));
 }

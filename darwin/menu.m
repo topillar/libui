@@ -5,14 +5,12 @@ static NSMutableArray *menus = nil;
 static BOOL menusFinalized = NO;
 
 struct uiMenu {
-	uiTyped t;
 	NSMenu *menu;
 	NSMenuItem *item;
 	NSMutableArray *items;
 };
 
 struct uiMenuItem {
-	uiTyped t;
 	NSMenuItem *item;
 	int type;
 	BOOL disabled;
@@ -28,6 +26,14 @@ enum {
 	typeAbout,
 	typeSeparator,
 };
+
+static void mapItemReleaser(void *key, void *value)
+{
+	uiMenuItem *item;
+ 
+	item = (uiMenuItem *)value;
+	[item->item release];
+}
 
 @implementation menuManager
 
@@ -45,7 +51,10 @@ enum {
 
 - (void)dealloc
 {
-	[self->items release];
+	mapWalk(self->items, mapItemReleaser);
+	mapReset(self->items);
+	mapDestroy(self->items);
+	uninitMenus();
 	[super dealloc];
 }
 
@@ -55,9 +64,9 @@ enum {
 
 	item = (uiMenuItem *) mapGet(self->items, sender);
 	if (item->type == typeCheckbox)
-		uiMenuItemSetChecked(uiMenuItem(item), !uiMenuItemChecked(uiMenuItem(item)));
+		uiMenuItemSetChecked(item, !uiMenuItemChecked(item));
 	// use the key window as the source of the menu event; it's the active window
-	(*(item->onClicked))(uiMenuItem(item), windowFromNSWindow([realNSApp() keyWindow]), item->onClickedData);
+	(*(item->onClicked))(item, windowFromNSWindow([realNSApp() keyWindow]), item->onClickedData);
 }
 
 - (IBAction)onQuitClicked:(id)sender
@@ -71,17 +80,17 @@ enum {
 	switch (smi->type) {
 	case typeQuit:
 		if (self->hasQuit)
-			complain("attempt to add multiple Quit menu items");
+			userbug("You can't have multiple Quit menu items in one program.");
 		self->hasQuit = YES;
 		break;
 	case typePreferences:
 		if (self->hasPreferences)
-			complain("attempt to add multiple Preferences menu items");
+			userbug("You can't have multiple Preferences menu items in one program.");
 		self->hasPreferences = YES;
 		break;
 	case typeAbout:
 		if (self->hasAbout)
-			complain("attempt to add multiple About menu items");
+			userbug("You can't have multiple About menu items in one program.");
 		self->hasAbout = YES;
 		break;
 	}
@@ -118,14 +127,14 @@ enum {
 	NSMenu *servicesMenu;
 
 	appName = [[NSProcessInfo processInfo] processName];
-	appMenuItem = [[NSMenuItem alloc] initWithTitle:appName action:NULL keyEquivalent:@""];
-	appMenu = [[NSMenu alloc] initWithTitle:appName];
+	appMenuItem = [[[NSMenuItem alloc] initWithTitle:appName action:NULL keyEquivalent:@""] autorelease];
+	appMenu = [[[NSMenu alloc] initWithTitle:appName] autorelease];
 	[appMenuItem setSubmenu:appMenu];
 	[menubar addItem:appMenuItem];
 
 	// first is About
 	title = [@"About " stringByAppendingString:appName];
-	item = [[NSMenuItem alloc] initWithTitle:title action:@selector(onClicked:) keyEquivalent:@""];
+	item = [[[NSMenuItem alloc] initWithTitle:title action:@selector(onClicked:) keyEquivalent:@""] autorelease];
 	[item setTarget:self];
 	[appMenu addItem:item];
 	self.aboutItem = item;
@@ -133,7 +142,7 @@ enum {
 	[appMenu addItem:[NSMenuItem separatorItem]];
 
 	// next is Preferences
-	item = [[NSMenuItem alloc] initWithTitle:@"Preferences…" action:@selector(onClicked:) keyEquivalent:@","];
+	item = [[[NSMenuItem alloc] initWithTitle:@"Preferences…" action:@selector(onClicked:) keyEquivalent:@","] autorelease];
 	[item setTarget:self];
 	[appMenu addItem:item];
 	self.preferencesItem = item;
@@ -141,8 +150,8 @@ enum {
 	[appMenu addItem:[NSMenuItem separatorItem]];
 
 	// next is Services
-	item = [[NSMenuItem alloc] initWithTitle:@"Services" action:NULL keyEquivalent:@""];
-	servicesMenu = [[NSMenu alloc] initWithTitle:@"Services"];
+	item = [[[NSMenuItem alloc] initWithTitle:@"Services" action:NULL keyEquivalent:@""] autorelease];
+	servicesMenu = [[[NSMenu alloc] initWithTitle:@"Services"] autorelease];
 	[item setSubmenu:servicesMenu];
 	[realNSApp() setServicesMenu:servicesMenu];
 	[appMenu addItem:item];
@@ -151,14 +160,14 @@ enum {
 
 	// next are the three hiding options
 	title = [@"Hide " stringByAppendingString:appName];
-	item = [[NSMenuItem alloc] initWithTitle:title action:@selector(hide:) keyEquivalent:@"h"];
+	item = [[[NSMenuItem alloc] initWithTitle:title action:@selector(hide:) keyEquivalent:@"h"] autorelease];
 	// the .xib file says they go to -1 ("First Responder", which sounds wrong...)
 	// to do that, we simply leave the target as nil
 	[appMenu addItem:item];
-	item = [[NSMenuItem alloc] initWithTitle:@"Hide Others" action:@selector(hideOtherApplications:) keyEquivalent:@"h"];
+	item = [[[NSMenuItem alloc] initWithTitle:@"Hide Others" action:@selector(hideOtherApplications:) keyEquivalent:@"h"] autorelease];
 	[item setKeyEquivalentModifierMask:(NSAlternateKeyMask | NSCommandKeyMask)];
 	[appMenu addItem:item];
-	item = [[NSMenuItem alloc] initWithTitle:@"Show All" action:@selector(unhideAllApplications:) keyEquivalent:@""];
+	item = [[[NSMenuItem alloc] initWithTitle:@"Show All" action:@selector(unhideAllApplications:) keyEquivalent:@""] autorelease];
 	[appMenu addItem:item];
 
 	[appMenu addItem:[NSMenuItem separatorItem]];
@@ -166,7 +175,7 @@ enum {
 	// and finally Quit
 	// DON'T use @selector(terminate:) as the action; we handle termination ourselves
 	title = [@"Quit " stringByAppendingString:appName];
-	item = [[NSMenuItem alloc] initWithTitle:title action:@selector(onQuitClicked:) keyEquivalent:@"q"];
+	item = [[[NSMenuItem alloc] initWithTitle:title action:@selector(onQuitClicked:) keyEquivalent:@"q"] autorelease];
 	[item setTarget:self];
 	[appMenu addItem:item];
 	self.quitItem = item;
@@ -176,7 +185,7 @@ enum {
 {
 	NSMenu *menubar;
 
-	menubar = [[NSMenu alloc] initWithTitle:@""];
+	menubar = [[[NSMenu alloc] initWithTitle:@""] autorelease];
 	[self buildApplicationMenu:menubar];
 	return menubar;
 }
@@ -202,7 +211,7 @@ void uiMenuItemDisable(uiMenuItem *item)
 void uiMenuItemOnClicked(uiMenuItem *item, void (*f)(uiMenuItem *, uiWindow *, void *), void *data)
 {
 	if (item->type == typeQuit)
-		complain("attempt to call uiMenuItemOnClicked() on a Quit item; use uiOnShouldQuit() instead");
+		userbug("You can't call uiMenuItemOnClicked() on a Quit item; use uiOnShouldQuit() instead.");
 	item->onClicked = f;
 	item->onClickedData = data;
 }
@@ -224,27 +233,28 @@ void uiMenuItemSetChecked(uiMenuItem *item, int checked)
 
 static uiMenuItem *newItem(uiMenu *m, int type, const char *name)
 {
+	@autoreleasepool {
+
 	uiMenuItem *item;
 
 	if (menusFinalized)
-		complain("attempt to create a new menu item after menus have been finalized");
+		userbug("You can't create a new menu item after menus have been finalized.");
 
 	item = uiNew(uiMenuItem);
-	uiTyped(item)->Type = uiMenuItemType();
 
 	item->type = type;
 	switch (item->type) {
 	case typeQuit:
-		item->item = appDelegate().menuManager.quitItem;
+		item->item = [appDelegate().menuManager.quitItem retain];
 		break;
 	case typePreferences:
-		item->item = appDelegate().menuManager.preferencesItem;
+		item->item = [appDelegate().menuManager.preferencesItem retain];
 		break;
 	case typeAbout:
-		item->item = appDelegate().menuManager.aboutItem;
+		item->item = [appDelegate().menuManager.aboutItem retain];
 		break;
 	case typeSeparator:
-		item->item = [NSMenuItem separatorItem];
+		item->item = [[NSMenuItem separatorItem] retain];
 		[m->menu addItem:item->item];
 		break;
 	default:
@@ -260,6 +270,8 @@ static uiMenuItem *newItem(uiMenu *m, int type, const char *name)
 	[m->items addObject:[NSValue valueWithPointer:item]];
 
 	return item;
+
+	} // @autoreleasepool
 }
 
 uiMenuItem *uiMenuAppendItem(uiMenu *m, const char *name)
@@ -297,15 +309,16 @@ void uiMenuAppendSeparator(uiMenu *m)
 
 uiMenu *uiNewMenu(const char *name)
 {
+	@autoreleasepool {
+
 	uiMenu *m;
 
 	if (menusFinalized)
-		complain("attempt to create a new menu after menus have been finalized");
+		userbug("You can't create a new menu after menus have been finalized.");
 	if (menus == nil)
 		menus = [NSMutableArray new];
 
 	m = uiNew(uiMenu);
-	uiTyped(m)->Type = uiMenuType();
 
 	m->menu = [[NSMenu alloc] initWithTitle:toNSString(name)];
 	// use automatic menu item enabling for all menus for consistency's sake
@@ -320,6 +333,8 @@ uiMenu *uiNewMenu(const char *name)
 	[menus addObject:[NSValue valueWithPointer:m]];
 
 	return m;
+
+	} // @autoreleasepool
 }
 
 void finalizeMenus(void)
@@ -331,7 +346,6 @@ void uninitMenus(void)
 {
 	if (menus == NULL)
 		return;
-	// don't worry about the actual NSMenus and NSMenuItems; they'll be freed when we clean up the NSApplication
 	[menus enumerateObjectsUsingBlock:^(id obj, NSUInteger index, BOOL *stop) {
 		NSValue *v;
 		uiMenu *m;

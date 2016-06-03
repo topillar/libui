@@ -3,25 +3,57 @@
 
 // unfortunately NSMutableDictionary copies its keys, meaning we can't use it for pointers
 // hence, this file
+// we could expose a NSMapTable directly, but let's treat all pointers as opaque and hide the implementation, just to be safe and prevent even more rewrites later
+struct mapTable {
+	NSMapTable *m;
+};
 
-NSMapTable *newMap(void)
+struct mapTable *newMap(void)
 {
-	return [NSMapTable mapTableWithKeyOptions:(NSPointerFunctionsOpaqueMemory | NSPointerFunctionsOpaquePersonality)
-		valueOptions:NSPointerFunctionsOpaqueMemory];
+	struct mapTable *m;
+
+	m = uiNew(struct mapTable);
+	m->m = [[NSMapTable alloc] initWithKeyOptions:(NSPointerFunctionsOpaqueMemory | NSPointerFunctionsOpaquePersonality)
+		valueOptions:(NSPointerFunctionsOpaqueMemory | NSPointerFunctionsOpaquePersonality)
+		capacity:0];
+	return m;
 }
 
-void *mapGet(NSMapTable *map, id key)
+void mapDestroy(struct mapTable *m)
 {
-	NSValue *v;
-
-	v = (NSValue *) [map objectForKey:key];
-	return [v pointerValue];
+	if ([m->m count] != 0)
+		implbug("attempt to destroy map with items inside");
+	[m->m release];
+	uiFree(m);
 }
 
-void mapSet(NSMapTable *map, id key, void *value)
+void *mapGet(struct mapTable *m, void *key)
 {
-	NSValue *v;
+	return NSMapGet(m->m, key);
+}
 
-	v = [NSValue valueWithPointer:value];
-	[map setObject:v forKey:key];
+void mapSet(struct mapTable *m, void *key, void *value)
+{
+	NSMapInsert(m->m, key, value);
+}
+
+void mapDelete(struct mapTable *m, void *key)
+{
+	NSMapRemove(m->m, key);
+}
+
+void mapWalk(struct mapTable *m, void (*f)(void *key, void *value))
+{
+	NSMapEnumerator e = NSEnumerateMapTable(m->m);
+	void *k = NULL;
+	void *v = NULL;
+	while (NSNextMapEnumeratorPair(&e, &k, &v)) {
+		f(k, v);
+	}
+	NSEndMapTableEnumeration(&e);
+}
+
+void mapReset(struct mapTable *m)
+{
+	NSResetMapTable(m->m);
 }

@@ -11,16 +11,11 @@ struct uiTab {
 	GArray *pages;				// []*struct child
 };
 
-static void onDestroy(uiTab *);
+uiUnixControlAllDefaultsExceptDestroy(uiTab)
 
-uiUnixDefineControlWithOnDestroy(
-	uiTab,								// type name
-	uiTabType,							// type function
-	onDestroy(this);						// on destroy
-)
-
-static void onDestroy(uiTab *t)
+static void uiTabDestroy(uiControl *c)
 {
+	uiTab *t = uiTab(c);
 	guint i;
 	struct child *page;
 
@@ -29,9 +24,10 @@ static void onDestroy(uiTab *t)
 		childDestroy(page);
 	}
 	g_array_free(t->pages, TRUE);
+	// and free ourselves
+	g_object_unref(t->widget);
+	uiFreeControl(uiControl(t));
 }
-
-// TODO tabContainerUpdateState()
 
 void uiTabAppend(uiTab *t, const char *name, uiControl *child)
 {
@@ -87,7 +83,7 @@ uiTab *uiNewTab(void)
 {
 	uiTab *t;
 
-	t = (uiTab *) uiNewControl(uiTabType());
+	uiUnixNewControl(uiTab, t);
 
 	t->widget = gtk_notebook_new();
 	t->container = GTK_CONTAINER(t->widget);
@@ -96,9 +92,6 @@ uiTab *uiNewTab(void)
 	gtk_notebook_set_scrollable(t->notebook, TRUE);
 
 	t->pages = g_array_new(FALSE, TRUE, sizeof (struct child *));
-
-	uiUnixFinishNewControl(t, uiTab);
-//TODO	uiControl(t)->ContainerUpdateState = tabContainerUpdateState;
 
 	return t;
 }
