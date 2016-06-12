@@ -45,6 +45,8 @@ static void openTestWindow(uiBox *(*mkf)(void))
 	// TODO nonscrolling and scrolling areas?
 	BA(uiNewFontButton());
 	BA(uiNewColorButton());
+	BA(uiNewPasswordEntry());
+	BA(uiNewSearchEntry());
 
 	uiControlShow(uiControl(w));
 }
@@ -54,11 +56,22 @@ static void buttonClicked(uiButton *b, void *data)
 	openTestWindow((uiBox *(*)(void)) data);
 }
 
+static void entryChanged(uiEntry *e, void *data)
+{
+	char *text;
+
+	text = uiEntryText(e);
+	printf("%s entry changed: %s\n", (const char *) data, text);
+	uiFreeText(text);
+}
+
 uiBox *makePage13(void)
 {
 	uiBox *page13;
 	uiRadioButtons *rb;
 	uiButton *b;
+	uiForm *f;
+	uiEntry *e;
 
 	page13 = newVerticalBox();
 
@@ -80,6 +93,19 @@ uiBox *makePage13(void)
 	b = uiNewButton("Vertical");
 	uiButtonOnClicked(b, buttonClicked, uiNewVerticalBox);
 	uiBoxAppend(page13, uiControl(b), 0);
+
+	f = newForm();
+	uiBoxAppend(page13, uiControl(f), 1);
+
+	e = uiNewPasswordEntry();
+	uiEntryOnChanged(e, entryChanged, "password");
+	uiFormAppend(f, "Password Entry", uiControl(e), 0);
+
+	e = uiNewSearchEntry();
+	uiEntryOnChanged(e, entryChanged, "search");
+	uiFormAppend(f, "Search Box", uiControl(e), 0);
+
+	uiFormAppend(f, "MLE", uiControl(uiNewMultilineEntry()), 1);
 
 	return page13;
 }

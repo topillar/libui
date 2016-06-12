@@ -1,6 +1,8 @@
-# 1 june 2016
+# 3 june 2016
 
-include_directories(.. .)
+if(WIN32)
+	set(_TEST_RESOURCES_RC resources.rc)
+endif()
 
 _add_exec(tester
 	drawtests.c
@@ -23,4 +25,12 @@ _add_exec(tester
 	page8.c
 	page9.c
 	spaced.c
+	${_TEST_RESOURCES_RC}
+)
+target_include_directories(tester
+	PRIVATE test
+)
+set_target_properties(tester PROPERTIES
+	OUTPUT_NAME test
+	WIN32_EXECUTABLE FALSE
 )

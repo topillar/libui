@@ -1,15 +1,16 @@
-# 31 may 2016
+# 3 june 2016
 
-include_directories(.. .)
+list(APPEND _LIBUI_SOURCES
+	common/areaevents.c
+	common/control.c
+	common/debug.c
+	common/matrix.c
+	common/shouldquit.c
+	common/userbugs.c
+)
+set(_LIBUI_SOURCES ${_LIBUI_SOURCES} PARENT_SCOPE)
 
-add_library(libui-common OBJECT
-	areaevents.c
-	control.c
-	debug.c
-	matrix.c
-	shouldquit.c
-	userbugs.c
+list(APPEND _LIBUI_INCLUDEDIRS
+	common
 )
-set_target_properties(libui-common PROPERTIES
-	COMPILE_FLAGS "${_LIBUI_CFLAGS}"
-)
+set(_LIBUI_INCLUDEDIRS ${_LIBUI_INCLUDEDIRS} PARENT_SCOPE)

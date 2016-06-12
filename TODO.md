@@ -1,3 +1,7 @@
+- more robust layout handling
+	- uiFormTie() for ensuring multiple uiForms have the same label area widths
+	- uiSizeGroup for size groups (GtkSizeGroup on GTK+, auto layout constraints on OS X; consider adding after 10.8 is gone)
+
 - windows: should the initial hwndInsertAfter be HWND_BOTTOM for what we want?
 
 - windows: document the rules for controls and containers
@@ -32,7 +36,6 @@
 
 - DPI awareness on windows
 
-- consider calling setAppleMenu: for the application menu; it doesn't seem to make much of a difference but
 - http://stackoverflow.com/questions/4543087/applicationwillterminate-and-the-dock-but-wanting-to-cancel-this-action
 
 ultimately:
