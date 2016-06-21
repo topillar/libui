@@ -47,6 +47,7 @@ static void openTestWindow(uiBox *(*mkf)(void))
 	BA(uiNewColorButton());
 	BA(uiNewPasswordEntry());
 	BA(uiNewSearchEntry());
+	BA(uiNewVerticalSeparator());
 
 	uiControlShow(uiControl(w));
 }
@@ -65,6 +66,36 @@ static void entryChanged(uiEntry *e, void *data)
 	uiFreeText(text);
 }
 
+static void showHide(uiButton *b, void *data)
+{
+	uiControl *c = uiControl(data);
+
+	if (uiControlVisible(c))
+		uiControlHide(c);
+	else
+		uiControlShow(c);
+}
+
+static void setIndeterminate(uiButton *b, void *data)
+{
+	uiProgressBar *p = uiProgressBar(data);
+	int value;
+
+	value = uiProgressBarValue(p);
+	if (value == -1)
+		value = 50;
+	else
+		value = -1;
+	uiProgressBarSetValue(p, value);
+}
+
+static void deleteFirst(uiButton *b, void *data)
+{
+	uiForm *f = uiForm(data);
+
+	uiFormDelete(f, 0);
+}
+
 uiBox *makePage13(void)
 {
 	uiBox *page13;
@@ -72,6 +103,7 @@ uiBox *makePage13(void)
 	uiButton *b;
 	uiForm *f;
 	uiEntry *e;
+	uiProgressBar *p;
 
 	page13 = newVerticalBox();
 
@@ -95,7 +127,6 @@ uiBox *makePage13(void)
 	uiBoxAppend(page13, uiControl(b), 0);
 
 	f = newForm();
-	uiBoxAppend(page13, uiControl(f), 1);
 
 	e = uiNewPasswordEntry();
 	uiEntryOnChanged(e, entryChanged, "password");
@@ -106,6 +137,21 @@ uiBox *makePage13(void)
 	uiFormAppend(f, "Search Box", uiControl(e), 0);
 
 	uiFormAppend(f, "MLE", uiControl(uiNewMultilineEntry()), 1);
+
+	p = uiNewProgressBar();
+	uiProgressBarSetValue(p, 50);
+	uiBoxAppend(page13, uiControl(p), 0);
+	b = uiNewButton("Toggle Indeterminate");
+	uiButtonOnClicked(b, setIndeterminate, p);
+	uiBoxAppend(page13, uiControl(b), 0);
+
+	b = uiNewButton("Show/Hide");
+	uiButtonOnClicked(b, showHide, e);
+	uiBoxAppend(page13, uiControl(b), 0);
+	b = uiNewButton("Delete First");
+	uiButtonOnClicked(b, deleteFirst, f);
+	uiBoxAppend(page13, uiControl(b), 0);
+	uiBoxAppend(page13, uiControl(f), 1);
 
 	return page13;
 }
